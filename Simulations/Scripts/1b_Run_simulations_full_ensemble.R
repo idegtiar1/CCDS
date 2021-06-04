@@ -737,7 +737,7 @@ saveRDS(sim_results_s_probabilistic_c_ensemble,
 
 # Run m simulation iterations, each with M=1000 bootstrap replications, saving every iteration
 for(l in 1:m){
-  paste0("Bootstrap - ensemble",l)
+  paste0("Bootstrap - ensemble ",l)
   clusterSetRNGStream(cl, iseed = (random_seed+l))
   sim_results_boot_ensemble_l = run_simulation_with_bootstrap(n_target = my_n_target, # target sample size 
                                                               target_pop=sim_data_complex_noX1cube, # target population from which to draw
