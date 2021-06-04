@@ -1,0 +1,936 @@
+---
+title: "Novel estimator simulation: plots for presentation"
+author: ""
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: sandstone
+    toc: true
+    number_sections: true
+    # toc_depth: 3
+    toc_float: true
+    # toc_collapsed: false
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, warning = FALSE, cache.lazy = FALSE)
+```
+
+```{r load_libraries, output=F, message=FALSE}
+### Load libraries
+rm(list=ls())    
+# start.time1 <- proc.time()
+setwd("/Code/Simulations/Not based on real data")
+path = getwd()   
+ 
+library(tidyverse) # for data manipulation 
+library(nnet) # for nnet object output (multinomial regression fits)  
+library(glmnet) # for lasso regression output 
+library(Hmisc) # for efficiently sampling from multinomial distribution
+library(parallel) # for parallel processing  
+library(SuperLearner) # for ensembling
+ 
+library(knitr) # pretty tables  
+library(kableExtra) # prettier tables
+library(ggthemes) # pretty colors for ggplots 
+library(gridExtra) # for arranging ggplots
+library(magrittr) # for data manipulation (set_colnames)   
+library(fst) # for storing large data frames/tables
+library(qs) # for storing large data 
+library(mefa4) # for %notin% function 
+library(kernlab) # for ksvm modeling
+
+source('../Helper_files/pw_overlap.R') # for determining regions of overlap and non-overlap, from Nethery et al. 2019: https://github.com/rachelnethery/overlap
+source('../Helper_files/sim_functions.R') # for fitting models and simulating data    
+  
+# Hyperparameters
+m = 1000 # number of replications 
+my_N=1000000 # target population size
+my_n_target = 10000 # target sample size 
+p_A_S1 = c(0.4,0.6) # P(A=1|S=1),P(A=2|S=1)
+my_beta_AU = 0.625 # strength of relationship between U and A
+my_beta_YU = c(10,0) # strength of relationship between U and Y: main effect and interaction with X1 
+my_beta_AX_linear = c(0.125,0.1,0.075,0.05) # coefficients for relationship between X and A
+my_beta_AX = c(my_beta_AX_linear,0.1) # coefficients for relationship between X and A
+my_beta_YX_linear = c(4,4,3,2) # coefficients for relationship between X and Y
+my_beta_YX = c(my_beta_YX_linear,0.4) # coefficients for relationship between X and Y
+my_beta_YAX_linear = c(4) # coefficient for interaction between X and A in Y regression: X1*A, (X1+1.0)^3*A
+my_beta_YAX = c(my_beta_YAX_linear,0) # coefficient for interaction between X and A in Y regression: X1*A, 
+random_seed=123 # random seed
+n_estimators = 10 # number of estimators being compared, including oracle
+
+# Set ggplot theme   
+theme_set(theme_bw())   
+
+### Create library of algorithms
+# SL.glmnet.alt = create.Learner("SL.glmnet", tune = list(alpha = 0.5)) # Default alpha = 1, nfolds = 10, nlambda = 100
+# SL.ranger.alt = create.Learner("SL.ranger", tune = list(num.trees = 300, min.node.size=floor(my_n_target*0.05)), name_prefix = "SL.ranger_trees") # Default num.trees = 100, mtry = floor(sqrt(ncol(X))), min.node.size = ifelse(family$family == "gaussian", 5, 1)
+# #SL.svm.alt = create.Learner("SL.svm", tune = list(nu = 0.2, epsilon = 0.1)) # Defaults: nu = 0.5
+# SL.nnet.alt = create.Learner("SL.nnet", tune = list(size = 2)) # Defaults: size = 2
+# 
+# my_SL_library = c("SL.glm", SL.glmnet.alt$names,
+#                SL.ranger.alt$names, #SL.svm.alt$names, 
+#                SL.nnet.alt$names,
+#                "SL.earth", "SL.gam", "SL.kernelKnn")
+ 
+my_SL_library = c("SL.glm", "SL.glm.interaction","SL.earth", "SL.nnet") # fast version
+file_suffix = "_fast" #"_full"
+   
+```
+
+# Base case results
+Let's discuss the estimators one at a time to determine when they work well and when they don't. Why can't we just use the rand estimator? With correctly specified models, the rand estimator is able to extrapolate well; it would be a natural choice in this setting. However, we never know that we've fit the correct models in practice, and when we (incorrectly) fit simple linear models, even though the true cubic relationship isn't too far off the linear one, the rand estimator is no longer able to extrapolate well beyond its support, resulting in large external validity bias.
+
+The next easiest approach is to use the obs/rand estimator. However, this estimator is subject to unmeasured confounding bias, which exists even when correctly-specified models are fit.
+
+Let's jump ahead and focus on the 2-stage WD estimator, the last in the list. With correctly specified models, all novel estimators including the 2-stage WD approach are able to decrease unmeasured confounding bias. And the 2-stage WD approach is most efficient novel outcome regression estimator. However, when (incorrectly) fitting simple linear models, just as with the rand estimator, the issue of extrapolation similarly plagues the 2-stage WD estimator. In fact, with simple linear least-squares models, its estimates will be identical to that of the rand estimator and with more complex ensemble models its bias tends to be similar to that of the rand estimator. Because of the 2-stage WD's extreme sensitivity to model misspecificiation (which we also observe when fitting ensemble regressions), I do not generally recommend using the 2-stage WD estimator. 
+
+We've crossed out 3 estimators from consideration, now let's focus on the first of the CCDS estimators, the CCDS and CCDS-AIPW. These estimators suffer from large variability when fitting complex models in the small overlap region, which we observe in the correctly specified model setting and when fitting ensembles. In contrast, when fitting linear models, the CCDS and CCDS-AIPW estimators now perform well, with little bias despite the model misspecification. They perform well due to a linear relationship being a decent approximation to the true cubic one, for purposes of bias estimation. In fact, in the simple linear additive model setting, their estimates will be identical to those of the 2-stage CCDS due to linearity and additivity. The CCDS and CCDS-AIPW therefore are reasonable choices when fitting more simple linear models that are less sensitive than flexible models to wild extrapolations from the small overlap region. They should not be used when fitting more complex relationships without some heavy regularization. 
+
+Now let's turn our attention to the 2-stage CCDS estimator. Compared to the 1-stage CCDS, the 2-stage CCDS estimator decreases bias and variance when using more complex models, i.e., the model is correctly specified or when using ensembles. It is therefore a reasonable default, particularly when there is more knowledge of the outcome relationship compared to the propensity of selection and treatment relationships, or when selection or treatments are rare or multinomial with small probabilities. 
+
+Let's finally turn our attention to the CCDS-IPW. Through most of the settings -- the correctly specified model and the ensembles -- the CCDS-IPW has the smallest bias and RMSE. The one exception is the linear setting: a linear model grossly misspecifies the propensity for selection, resulting in large remnant bias in the CCDS-IPW estimator for that setting. However, the estimator's efficiency in the simulations is largely due to the deterministic propensity of selection relationship with X1; with a more probabilistic relationship, its bias and variance increase to match that of the outcome regression estimators (not shown -- see the "S probabilistic" section in the 2_Summarize_simulation_results.html report). The CCDS-IPW estimator is therefore a reasonable default choice, particularly when there is more knowledge of the propensity of selection and treatment relationships compared to outcome relationships, and when selection and treatments are not rare. 
+
+Comparing the ensemble with an estimated overlap region to that using the true overlap region, we see that performance does not suffer from estimating the overlap region (and in fact at times resulted in lower bias and variance).
+
+Across all these settings, we note that in particular when fitting the flexible ensemble approaches, bias and RMSE may not decrease necessarily compared to the obs/rand estimator. This is due to remnant modeling bias. This bias does shrink with more overlap as well as with more randomized data (see subsequent sections of this report).  
+
+*PAPER FIGURE 2* (figure:results_base_case)  
+
+```{r sim_results_main, fig.height=7, fig.width=7, warning=F} 
+## Read in results and get summary tables
+# Dataset
+sim_data_complex = qread("/Results & output/Simulations/sim_data_complex.qs")
+
+# Correctly specified model
+sim_results_cs_t_o = readRDS("/Results & output/Simulations/sim_results_cs_t_o.rds")  
+
+table_cs_t_o = get_table_simulation_results(sim_results=sim_results_cs_t_o, sim_data_complex, ensemble = F)
+
+# Linear model true overlap
+sim_results_linear_t_o = readRDS("/Results & output/Simulations/sim_results_t_o_linear.rds")
+
+table_linear_t_o = get_table_simulation_results(sim_results=sim_results_linear_t_o, sim_data_complex, ensemble = F)
+
+# Ensemble true overlap
+sim_results_ensemble_t_o = readRDS(paste0("/Results & output/Simulations/sim_results_ensemble_t_o",file_suffix,".rds")) 
+ 
+table_ensemble_t_o = get_table_simulation_results(sim_results_ensemble_t_o, sim_data = sim_data_complex, ensemble = T)
+
+# Ensemble estimated overlap
+sim_results_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_ensemble",file_suffix,".rds")) 
+ 
+table_ensemble = get_table_simulation_results(sim_results_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                "Main terms \n true overlap",
+                "Ensemble \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], table_cs_t_o),  
+                  cbind("Type" = table_names[2], table_linear_t_o),
+                  cbind("Type" = table_names[3], table_ensemble_t_o),
+                  cbind("Type" = table_names[4], table_ensemble)) %>%  
+  mutate(Type = factor(Type, table_names))
+ 
+plot_bias_rmse_results(my_tables)  
+```
+
+*PAPER APPENDIX FIGURE 1A* (figure:bias_RMSE)  
+```{r sim_results_main_full, fig.height=7, fig.width=8, warning=F}
+plot_bias_rmse_results(my_tables, exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
+                                                         "weighted 2-stage hybrid CCDS", "2-stage WD"))   
+```
+
+
+# Coverage
+## Main results
+All novel estimators were able to achieve nominal coverage except the CCDS-IPW estimator when using grossly misspecified linear models and except the 2-stage WD estimator in the linear model and ensemble setting. The obs/rand estimator attained 0% coverage across all settings, and the rand estimator attained 0% coverage in the linear settings for the PATMs but 95% coverage for the PATE due to biases cancelling out.
+
+*PAPER FIGURE 3* (figure:results_coverge)  
+*PAPER APPENDIX FIGURE 1B* (figure:coverage)  
+```{r sim_results_coverage, fig.height=5, fig.width=7.5, warning=F, eval=F} 
+## Read in results and get summary tables
+# Correctly specified model
+sim_results_boot_cs_t_o = readRDS("/Results & output/Simulations/sim_results_boot_cs_t_o.rds")  
+
+boot_results_cs_t_o = summarize_simulation_bootstrap_results(sim_results_boot_cs_t_o)
+
+# Linear model true overlap
+sim_results_boot_t_o_linear = readRDS("/Results & output/Simulations/sim_results_boot_t_o_linear.rds")  
+
+boot_results_t_o_linear = summarize_simulation_bootstrap_results(sim_results_boot_t_o_linear)
+
+# Ensemble estimated overlap
+sim_results_boot_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_boot_ensemble",file_suffix,".rds"))   
+
+boot_results_ensemble = summarize_simulation_bootstrap_results(sim_results_boot_ensemble)
+
+
+## Summarize across simulations 
+table_names = c("Correctly specified \n true overlap",
+                "Main terms \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], boot_results_cs_t_o), 
+                  cbind("Type" = table_names[2], boot_results_t_o_linear),
+                  cbind("Type" = table_names[3], boot_results_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names))
+ 
+plot_coverage_results(my_tables)     
+
+plot_coverage_results(my_tables, exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
+                                                         "weighted 2-stage hybrid CCDS", "2-stage WD"))   
+
+my_tables %>% mutate_if(is.numeric, round, 2) %>% kable("html") %>% 
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) 
+```
+
+## Lu et al. 2019
+Based on Lu et al. 2019 influence-curve derived confidence intervals
+```{r sim_results_coverage_lu, fig.height=5, fig.width=7.5, warning=F} 
+## Get confidence interval results for Lu et al. 2019 estimators
+# Correctly specified model
+table_lu2019_cs_t_o = get_lu2019_summary_table(sim_results=sim_results_cs_t_o, sim_data_complex, ensemble = F)
+
+# Linear model true overlap
+table_lu2019_linear_t_o = get_lu2019_summary_table(sim_results=sim_results_linear_t_o, sim_data_complex, ensemble = F)
+
+# Ensemble true overlap
+table_lu2019_ensemble_t_o = get_lu2019_summary_table(sim_results_ensemble_t_o, sim_data = sim_data_complex, ensemble = T)
+
+# Ensemble estimated overlap
+table_lu2019_ensemble = get_lu2019_summary_table(sim_results_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+## Summarize across simulations
+table_lu2019_names = c("Correctly specified \n true overlap",
+                "Main terms \n true overlap", 
+                "Ensemble \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables_lu2019 = rbind(cbind("Type" = table_lu2019_names[1], table_lu2019_cs_t_o),  
+                  cbind("Type" = table_lu2019_names[2], table_lu2019_linear_t_o),
+                  #cbind("Type" = table_lu2019_names[3], table_lu2019_ensemble_t_o),
+                  cbind("Type" = table_lu2019_names[4], table_lu2019_ensemble)) %>%  
+  mutate(Type = factor(Type, table_lu2019_names))
+
+ 
+plot_coverage_results(my_tables_lu2019)     
+
+my_tables_lu2019 %>% mutate_if(is.numeric, round, 2) %>% kable("html") %>% 
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) 
+
+```
+
+# Different sample sizes
+With correctly specified models, although all estimators' bias is lower than that of the obs/rand estimator, the ensemble CCDS and CCDS-AIPW estimators retains a non-trivial amount of bias that minimally decreases with larger sample sizes due to modeling bias from fitting models in the small overlap region. With smaller sample sizes ($n=2000$; $n_\text{RCT}=500$), the RMSE of all novel estimators and the rand estimator exceed that of the obs/rand estimator. 
+
+With ensemble models, all novel estimators' bias is below that of the obs/rand estimator (besides the 2-stage WD, which drops below after $n=10,000$). RMSE, however, only drops below that of the obs/rand estimator with $n=50,000$ (except for the CCDS-IPW estimator, whose RMSE is lower even with $n=2,000$.
+
+```{r sim_diff_n, fig.height=4, fig.width=7} 
+## Read in results and get summary tables
+# n=2000
+sim_results_n200_cs_t_o = readRDS("/Results & output/Simulations/sim_results_n250_cs_t_o.rds") 
+
+table_n200_cs_t_o = get_table_simulation_results(sim_results_n200_cs_t_o, sim_data = sim_data_complex, ensemble = F)
+
+sim_results_n200_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_n200_ensemble",file_suffix,".rds"))
+
+table_n200_ensemble = get_table_simulation_results(sim_results_n200_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+# n=2000
+sim_results_n2000_cs_t_o = readRDS("/Results & output/Simulations/sim_results_n2000_cs_t_o.rds") 
+
+table_n2000_cs_t_o = get_table_simulation_results(sim_results_n2000_cs_t_o, sim_data = sim_data_complex, ensemble = F)
+
+sim_results_n2000_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_n2000_ensemble",file_suffix,".rds"))
+
+table_n2000_ensemble = get_table_simulation_results(sim_results_n2000_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+# n=20000 
+sim_results_n20000_cs_t_o = readRDS("/Results & output/Simulations/sim_results_n20000_cs_t_o.rds") 
+
+table_n20000_cs_t_o = get_table_simulation_results(sim_results_n20000_cs_t_o, sim_data = sim_data_complex, ensemble = F)
+
+
+# n=50000
+sim_results_n50000_cs_t_o = readRDS("/Results & output/Simulations/sim_results_n50000_cs_t_o.rds") 
+
+table_n50000_cs_t_o = get_table_simulation_results(sim_results_n50000_cs_t_o, sim_data = sim_data_complex, ensemble = F)
+
+
+sim_results_n50000_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_n50000_ensemble",file_suffix,".rds"))  
+
+table_n50000_ensemble = get_table_simulation_results(sim_results_n50000_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                #"Main terms \n true overlap",
+                "Ensemble \n estimated overlap")
+
+my_tables = rbind(#cbind("Type" = "Correctly \n specified \n model", "n"=200, table_n200_cs_t_o), 
+                  #cbind("Type" = "Ensemble \n estimated \n overlap", "n"=200, table_n200_ensemble),
+                  cbind("Type" = table_names[1], "Setting"=2000, table_n2000_cs_t_o), 
+                  cbind("Type" = table_names[2], "Setting"=2000, table_n2000_ensemble),
+                  cbind("Type" = table_names[1], "Setting"=10000, table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"=10000, table_ensemble),
+                  cbind("Type" = table_names[1], "Setting"=20000, table_n20000_cs_t_o),
+                  cbind("Type" = table_names[1], "Setting"=50000, table_n50000_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"=50000, table_n50000_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names))
+```
+
+## $E(Y^1-Y^2)$ 
+*PAPER APPENDIX FIGURE 6* (figure:results_n)  
+```{r sim_results_diff_n, fig.height=4, fig.width=7}
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + 
+  scale_x_continuous(breaks=c(2000,10000,20000,50000)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  xlab("Sample size")
+
+################################################################################
+## Summarize across simulations including n=200
+my_tables_b = rbind(cbind("Type" = table_names[1], "Setting"=200, table_n200_cs_t_o), 
+                  cbind("Type" = table_names[2], "Setting"=200, table_n200_ensemble),
+                  cbind("Type" = table_names[1], "Setting"=2000, table_n2000_cs_t_o), 
+                  cbind("Type" = table_names[2], "Setting"=2000, table_n2000_ensemble),
+                  cbind("Type" = table_names[1], "Setting"=10000, table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"=10000, table_ensemble),
+                  cbind("Type" = table_names[1], "Setting"=20000, table_n20000_cs_t_o),
+                  cbind("Type" = table_names[1], "Setting"=50000, table_n50000_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"=50000, table_n50000_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names))
+
+plot_bias_rmse_separately(my_tables_b, my_estimands = c("E(Y^1) - E(Y^2)"),
+                          estimators_remove = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
+                                                           "weighted 2-stage hybrid CCDS",
+                                                           "2-stage WD", "weighted 2-stage WD",
+                                                         "Lu-rand", "Lu-obs/rand1", "Lu-obs/rand2")) + 
+  scale_x_continuous(breaks=c(200, 2000,10000,20000,50000)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  xlab("Sample size")
+```
+
+## $E(Y^1)$
+```{r sim_results_diff_n_Y1, fig.height=4, fig.width=7}
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) + 
+  scale_x_continuous(breaks=c(2000,10000,20000,50000)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  xlab("Sample size")
+```
+
+## $E(Y^2)$
+```{r sim_results_diff_n_Y2, fig.height=4, fig.width=7}
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) + 
+  scale_x_continuous(breaks=c(2000,10000,20000,50000)) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  xlab("Sample size")
+```
+
+# Different levels of unmeasured confounding
+As unmeasured confoudning bias increases, with correctly specified models, there is no corresponding increase in bias across novel estimators, though there is an increase in variance, a desirable trait. With ensemble models, we do observe a small increase in bias with more confounding. 
+```{r sim_U, fig.height=4, fig.width=7} 
+## Read in results and get summary tables
+# Datasets
+sim_data_less_conf = qread("/Results & output/Simulations/sim_data_less_conf.qs")
+sim_data_more_conf = qread("/Results & output/Simulations/sim_data_more_conf.qs")
+
+# No confounding
+sim_results_U_measured_cs_t_o = readRDS("/Results & output/Simulations/sim_results_U_measured_cs_t_o.rds")    
+  
+table_U_measured_cs_t_o = get_table_simulation_results(sim_results_U_measured_cs_t_o, sim_data = sim_data_complex, ensemble = F)
+
+sim_results_U_measured_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_U_measured_ensemble",file_suffix,".rds"))
+ 
+table_U_measured_ensemble = get_table_simulation_results(sim_results_U_measured_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+# Less confounding
+sim_results_less_conf_cs_t_o = readRDS("/Results & output/Simulations/sim_results_less_conf_cs_t_o.rds")   
+ 
+table_less_conf_cs_t_o = get_table_simulation_results(sim_results_less_conf_cs_t_o, sim_data = sim_data_less_conf, ensemble = F)
+
+sim_results_less_conf_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_less_conf_ensemble",file_suffix,".rds"))
+ 
+table_less_conf_ensemble = get_table_simulation_results(sim_results_less_conf_ensemble, sim_data = sim_data_less_conf, ensemble = T)
+
+# More confounding
+sim_results_more_conf_t_o = readRDS("/Results & output/Simulations/sim_results_more_conf_cs_t_o.rds") 
+ 
+table_more_conf_cs_t_o = get_table_simulation_results(sim_results_more_conf_t_o, sim_data = sim_data_more_conf, ensemble = F)
+
+sim_results_more_conf_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_more_conf_ensemble",file_suffix,".rds"))
+ 
+table_more_conf_ensemble = get_table_simulation_results(sim_results_more_conf_ensemble, sim_data = sim_data_more_conf, ensemble = T)
+
+## Summarize across simulations 
+table_names = c("Correctly specified \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="No confounding", table_U_measured_cs_t_o), 
+                  cbind("Type" = table_names[2], "Setting"="No confounding", table_U_measured_ensemble),
+                  # cbind("Type" = table_names[1], "Setting"="Less confounding", table_less_conf_cs_t_o),
+                  # cbind("Type" = table_names[2], "Setting"="Less confounding", table_less_conf_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="Default confounding", table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="Default confounding", table_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="More confounding", table_more_conf_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="More confounding", table_more_conf_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names),
+         Setting = factor(Setting, c("No confounding", "Less confounding", "Default confounding", "More confounding")))
+
+```
+
+## Paper figure
+*PAPER APPENDIX FIGURE 7* (figure:results_U)  
+```{r sim_results_U, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")")))
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle(expression(paste("E(",Y^1,")")))
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+```
+
+## $E(Y^1-Y^2)$ 
+```{r sim_results_U_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
+## $E(Y^1)$ 
+```{r sim_results_U_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
+## $E(Y^2)$ 
+```{r sim_results_U_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
+# Different levels of overlap
+With more overlap, all estimators are able to shrink bias close to zero. With less overlap, the rand estimator and CCDS/CCDS-AIPW estimators particularly suffer.
+```{r sim_overlap, fig.height=4, fig.width=7} 
+## Read in results and get summary tables
+# Datasets
+sim_data_less_overlap = qread("/Results & output/Simulations/sim_data_less_overlap.qs")
+sim_data_more_overlap = qread("/Results & output/Simulations/sim_data_more_overlap.qs")
+
+# Less overlap
+sim_results_less_overlap_cs_t_o = readRDS("/Results & output/Simulations/sim_results_less_overlap_cs_t_o.rds")
+
+table_less_overlap_cs_t_o = get_table_simulation_results(sim_results_less_overlap_cs_t_o, sim_data = sim_data_less_overlap, ensemble = "ksvm")
+
+sim_results_less_overlap_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_less_overlap_ensemble",file_suffix,".rds"))
+ 
+table_less_overlap_ensemble = get_table_simulation_results(sim_results_less_overlap_ensemble, sim_data = sim_data_less_overlap, ensemble = T)
+
+# More overlap
+sim_results_more_overlap_t_o = readRDS("/Results & output/Simulations/sim_results_more_overlap_cs_t_o.rds")
+
+table_more_overlap_cs_t_o = get_table_simulation_results(sim_results_more_overlap_t_o, sim_data = sim_data_less_overlap, ensemble = "ksvm")
+
+sim_results_more_overlap_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_more_overlap_ensemble",file_suffix,".rds"))
+ 
+table_more_overlap_ensemble = get_table_simulation_results(sim_results_more_overlap_ensemble, sim_data = sim_data_more_overlap, ensemble = T)
+
+## Summarize across simulations
+table_names = c("Correctly specified \n  true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="Less overlap", table_less_overlap_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="Less overlap", table_less_overlap_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="Default overlap", table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="Default overlap", table_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="More overlap", table_more_overlap_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="More overlap", table_more_overlap_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names),
+         Setting = factor(Setting, c("Less overlap", "Default overlap", "More overlap")))
+
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 3* (figure:results_overlap)  
+```{r sim_results_overlap, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")")))
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  ggtitle(expression(paste("E(",Y^1,")")))
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+```
+
+## $E(Y^1 - Y^2)$ 
+```{r sim_results_overlap_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
+## $E(Y^1)$ 
+```{r sim_results_overlap_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
+## $E(Y^2)$ 
+```{r sim_results_overlap_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) 
+```
+
+# Different ratios of $n_\text{RCT}$ to $n_\text{obs}$
+Bias and RMSE decreases across all estimators as the ratio of RCT to obs observations increases. As the RCT observations comprise a targer portion of the target sample, the bias from using the rand and obs/rand estimators also necessarily decreases. 
+```{r sim_nRCT_to_nobs, fig.height=4, fig.width=7} 
+## Read in results and get summary tables
+# Datasets
+sim_data_1to1 = qread("/Results & output/Simulations/sim_data_1to1.qs")
+sim_data_1to4 = qread("/Results & output/Simulations/sim_data_1to4.qs")
+sim_data_1to30 = qread("/Results & output/Simulations/sim_data_1to30.qs")
+
+# ## Correctly specified
+# 1:1
+sim_results_1to1_cs_t_o = readRDS(paste0("/Results & output/Simulations/sim_results_1to1_cs_t_o.rds"))
+
+table_1to1_cs_t_o = get_table_simulation_results(sim_results_1to1_cs_t_o, sim_data = sim_data_1to1, ensemble = T)
+
+# 1:4
+sim_results_1to4_cs_t_o = readRDS(paste0("/Results & output/Simulations/sim_results_1to4_cs_t_o.rds"))
+
+table_1to4_cs_t_o = get_table_simulation_results(sim_results_1to4_cs_t_o, sim_data = sim_data_1to4, ensemble = T)
+
+# 1:30
+sim_results_1to30_cs_t_o = readRDS(paste0("/Results & output/Simulations/sim_results_1to30_cs_t_o.rds"))
+
+table_1to30_cs_t_o = get_table_simulation_results(sim_results_1to30_cs_t_o, sim_data = sim_data_1to30, ensemble = T)
+
+
+## Ensemble
+# 1:1
+sim_results_1to1_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_1to1_ensemble",file_suffix,".rds"))
+
+table_1to1_ensemble = get_table_simulation_results(sim_results_1to1_ensemble, sim_data = sim_data_1to1, ensemble = T)
+
+# 1:4
+sim_results_1to4_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_1to4_ensemble",file_suffix,".rds"))
+
+table_1to4_ensemble = get_table_simulation_results(sim_results_1to4_ensemble, sim_data = sim_data_1to4, ensemble = T)
+
+# 1:30
+sim_results_1to30_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_1to30_ensemble",file_suffix,".rds"))
+
+table_1to30_ensemble = get_table_simulation_results(sim_results_1to30_ensemble, sim_data = sim_data_1to30, ensemble = T)
+
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="1:1", table_1to1_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="1:1", table_1to1_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="1:4", table_1to4_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="1:4", table_1to4_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="1:30", table_1to30_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="1:30", table_1to30_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names),
+         Setting = factor(Setting, c("1:30", "1:4", "1:1")))
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 4* (figure:results_ratio_obs_rand)  
+```{r sim_results_nRCT_to_nobs, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  xlab("Ratio of RCT:obs data") +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")")))
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  xlab("Ratio of RCT:obs data") +
+  ggtitle(expression(paste("E(",Y^1,")")))
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+```
+
+## $E(Y^1 - Y^2)$  
+```{r sim_results_nRCT_to_nobs_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) +
+  xlab("Ratio of RCT:obs data")
+```
+
+## $E(Y^1)$  
+```{r sim_results_nRCT_to_nobs_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  xlab("Ratio of RCT:obs data")
+```
+
+## $E(Y^2)$  
+```{r sim_results_nRCT_to_nobs_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) +
+  xlab("Ratio of RCT:obs data")
+```
+
+# Constant bias violation
+A violation of the constant bias assumption increases bias and RMSE for each of the estimators corresponding to the amount of extra unmeasured confounding bias observed in the obs/rand estimator. The impact purely accommodates the extra unmeasured confounding bias which was not removed.
+```{r sim_cbv, fig.height=4, fig.width=7} 
+## Read in results and get summary tables
+# Datasets
+sim_data_cbv = qread("/Results & output/Simulations/sim_data_cbv.qs")
+
+# Correctly specified
+sim_results_cbv_cs_t_o = readRDS("/Results & output/Simulations/sim_results_cbv_cs_t_o.rds")
+
+table_cbv_cs_t_o = get_table_simulation_results(sim_results_cbv_cs_t_o, sim_data = sim_data_cbv, ensemble = F)
+
+# Ensemble
+sim_results_cbv_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_cbv_ensemble",file_suffix,".rds"))
+
+table_cbv_ensemble = get_table_simulation_results(sim_results_cbv_ensemble, sim_data = sim_data_cbv, ensemble = T)
+ 
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="CBV", table_cbv_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="CBV", table_cbv_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="no CBV", table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="no CBV", table_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names),
+         Setting = factor(Setting, c("no CBV", "CBV")))
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 8* (figure:results_cbv)  
+```{r sim_results_cbv, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")")))
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  ggtitle(expression(paste("E(",Y^1,")")))
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+```
+
+## $E(Y^1 - Y^2)$ 
+```{r sim_results_cbv_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)"))
+```
+
+## $E(Y^1)$ 
+```{r sim_results_cbv_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)"))
+```
+
+## $E(Y^2)$ 
+```{r sim_results_cbv_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Exchangeability of sample selection violation: $S$ function of $U$
+```{r sim_exchangeability_SU, fig.height=4, fig.width=7} 
+## Read in results and get summary tables
+## S function of U
+# Datasets
+sim_data_SU = qread("/Results & output/Simulations/sim_data_SU.qs")
+
+# Correctly specified
+sim_results_SU_cs_t_o = readRDS("/Results & output/Simulations/sim_results_SU_cs_t_o.rds")
+
+table_SU_cs_t_o = get_table_simulation_results(sim_results_SU_cs_t_o, sim_data = sim_data_SU, ensemble = F)
+
+
+# Ensemble
+sim_results_SU_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_SU_ensemble",file_suffix,".rds"))
+
+table_SU_ensemble = get_table_simulation_results(sim_results_SU_ensemble, sim_data = sim_data_SU, ensemble = T)
+ 
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="violation", table_SU_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="violation", table_SU_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="no violation", table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="no violation", table_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names),
+         Setting = factor(Setting, c("no violation", "violation")))
+
+
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 9A* (first panel of figure:results_exchangeability_SU)  
+```{r sim_results_exchangeability_SU, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")")))
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  ggtitle(expression(paste("E(",Y^1,")")))
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+```
+
+## $E(Y^1 - Y^2)$ 
+```{r sim_results_exchangeability_SU_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) 
+```
+
+## $E(Y^1)$ 
+```{r sim_results_exchangeability_SU_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) 
+```
+
+## $E(Y^2)$ 
+```{r sim_results_exchangeability_SU_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) 
+```
+
+# Exchangeability of sample selection violation: $U$ function of $X_1$
+```{r sim_exchangeability_U_f_X1, fig.height=4, fig.width=7} 
+#########################################################################################################################
+## U function of X1
+# Datasets
+sim_data_U_f_X1 = qread("/Results & output/Simulations/sim_data_U_f_X1.qs")
+
+# Correctly specified
+sim_results_U_f_X1_cs_t_o = readRDS("/Results & output/Simulations/sim_results_U_f_X1_cs_t_o.rds")
+
+table_cbv_cs_t_o = get_table_simulation_results(sim_results_cbv_cs_t_o, sim_data = sim_data_cbv, ensemble = F)
+
+# Ensemble
+sim_results_U_f_X1_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_U_f_X1_ensemble",file_suffix,".rds"))
+
+table_cbv_ensemble = get_table_simulation_results(sim_results_cbv_ensemble, sim_data = sim_data_cbv, ensemble = T)
+ 
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="violation", table_cbv_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="violation", table_cbv_ensemble),
+                  cbind("Type" = table_names[1], "Setting"="no violation", table_cs_t_o),
+                  cbind("Type" = table_names[2], "Setting"="no violation", table_ensemble)) %>% 
+  mutate(Type = factor(Type, table_names),
+         Setting = factor(Setting, c("no violation", "violation")))
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 9B* (second panel of figure:results_exchangeability_SU)  
+```{r sim_results_exchangeability_U_f_X1, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")")))
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  ggtitle(expression(paste("E(",Y^1,")")))
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+```
+
+## $E(Y^1 - Y^2)$ 
+```{r sim_results_exchangeability_U_f_X1_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) 
+```
+
+## $E(Y^1)$ 
+```{r sim_results_exchangeability_U_f_X1_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) 
+```
+
+## $E(Y^2)$ 
+```{r sim_results_exchangeability_U_f_X1_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Overlap region specification
+```{r sim_overlap_spec, fig.height=4, fig.width=7} 
+# Ensemble
+sim_results_overlap1_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_overlap1_ensemble",file_suffix,".rds"))
+
+sim_results_overlap2_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_overlap2_ensemble",file_suffix,".rds"))
+
+sim_results_overlap3_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_overlap3_ensemble",file_suffix,".rds"))
+
+sim_results_overlap4_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_overlap4_ensemble",file_suffix,".rds"))
+
+
+table_overlap1_ensemble = get_table_simulation_results(sim_results_overlap1_ensemble, sim_data = sim_data_complex, ensemble = T)
+table_overlap2_ensemble = get_table_simulation_results(sim_results_overlap2_ensemble, sim_data = sim_data_complex, ensemble = T)
+table_overlap3_ensemble = get_table_simulation_results(sim_results_overlap3_ensemble, sim_data = sim_data_complex, ensemble = T)
+table_overlap4_ensemble = get_table_simulation_results(sim_results_overlap4_ensemble, sim_data = sim_data_complex, ensemble = T)
+ 
+## Summarize across simulations
+table_names = c("Correctly specified \n true overlap",
+                "Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[2], "Setting"="default", table_ensemble),
+                  cbind("Type" = table_names[2], "Setting"="overlap1", table_overlap1_ensemble),
+                  cbind("Type" = table_names[2], "Setting"="overlap2", table_overlap2_ensemble),
+                  cbind("Type" = table_names[2], "Setting"="overlap3", table_overlap3_ensemble),
+                  cbind("Type" = table_names[2], "Setting"="overlap4", table_overlap4_ensemble)) %>% 
+  mutate(Setting = recode(Setting, "overlap1" =  0.25, 
+                                            "default" = 0.38, 
+                                            "overlap2" = 0.39, 
+                                            "overlap4" = 0.52, 
+                                            "overlap3"= 0.91)) %>% 
+  mutate(Type = factor(Type, table_names)) %>% 
+  filter(Estimator %notin% c("Rand","Obs/rand"))
+ 
+
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 2* (figure:overlap_spec)  
+```{r sim_results_overlap_spec, fig.height=3.5, fig.width=8} 
+p1 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + theme(legend.position = "none") +
+  ggtitle(expression(paste("E(",Y^1,") - E(",Y^2,")"))) +  
+    scale_x_continuous(breaks=c(0.25,0.4,0.52, 0.91)) +
+  geom_vline(xintercept = 0.4) +
+  xlab("Estimated target sample % overlap")
+p2 = plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) +
+  ggtitle(expression(paste("E(",Y^1,")"))) + 
+    scale_x_continuous(breaks=c(0.25,0.4,0.52, 0.91)) +
+  geom_vline(xintercept = 0.4) +
+  xlab("Estimated target sample % overlap")
+p_legend = get_legend(p2)
+p2 = p2 + theme(legend.position = "none")
+grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
+
+my_tables[my_tables$Estimator %notin% c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
+                                                       "2-stage WD", "weighted 2-stage WD",
+                                        "Rand","Obs/rand") ,] %>% 
+    mutate(Estimator = gsub("weighted","",Estimator)) %>% 
+    mutate(Estimator = fct_relevel(Estimator,levels = levels(my_tables$Estimator))) %>% 
+    mutate(Estimator = factor(Estimator,levels = c("Rand","Obs/rand"," 2-stage WD",
+                                                        "CCDS","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW"))) %>%
+    mutate(Abs_Bias = abs(Bias),
+           RMSE = sqrt(MSE),
+           RMSE_minus_Abs_Bias = RMSE - Abs_Bias) %>% 
+  mutate_if(is.numeric, round, 2) %>% kable("html") %>% 
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) 
+```
+
+## $E(Y^1 - Y^2)$ 
+```{r sim_results_overlap_spec_diff, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1) - E(Y^2)")) + 
+    scale_x_continuous(breaks=c(0.25,0.4,0.52, 0.91)) +
+  geom_vline(xintercept = 0.4) + 
+  xlab("Estimated target sample % overlap")
+```
+
+## $E(Y^1)$ 
+```{r sim_results_overlap_spec_Y1, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^1)")) + 
+    scale_x_continuous(breaks=c(0.25,0.4,0.52, 0.91)) +
+  geom_vline(xintercept = 0.4) + 
+  xlab("Estimated target sample % overlap")
+```
+
+## $E(Y^2)$ 
+```{r sim_results_overlap_spec_Y2, fig.height=4, fig.width=7} 
+plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) + 
+    scale_x_continuous(breaks=c(0.25,0.4,0.52, 0.91)) +
+  geom_vline(xintercept = 0.4) + 
+  xlab("Estimated target sample % overlap")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Probabilistic P(S)
+In prior DGMs, for ease of determining overlap regions, $P(S|X)$ was deterministically set based on $X_1$. In this section, for a more realistic scenario, $P(S|X)$ was made to depend probabilistically on $X_1$, namely: $S \sim binom(P_S)$ where $logit(P_S) = \beta_S X$ and $\beta_S[1]$ is set to ensure $P(S)=0.2$. Namely, $\beta_S = (-7,2,1,0.5,0.1,0.1,0.1)$ where $X = (1, X_1, X_2, X_3, X_4, X_1^3, sin(X_1^3*X_2))$ and $P(A|S=1) = 0.1$. As a result, estimation of $E(Y^1)$ using CCDS-IPW becomes more difficult. 
+```{r sim_s_probabilistic_spec} 
+## Read in results and get summary tables
+# Ensemble
+sim_results_s_probabilistic_c_ensemble = readRDS(paste0("/Results & output/Simulations/sim_results_s_probabilistic_c_ensemble",file_suffix,".rds"))
+
+table_s_probabilistic_c_ensemble = get_table_simulation_results(sim_results_s_probabilistic_c_ensemble, sim_data = sim_data_complex, ensemble = T)
+
+ 
+## Summarize across simulations
+table_names = c("Ensemble \n estimated overlap")
+my_tables = rbind(cbind("Type" = table_names[1], "Setting"="P(S) probabilistic", table_s_probabilistic_c_ensemble)) 
+
+```
+
+## Paper figure  
+*PAPER APPENDIX FIGURE 10* (figure:results_S_probabilistic)    
+```{r sim_results_s_probabilistic_c, fig.height=4, fig.width=4} 
+my_estimands = c("E(Y^1)","E(Y^2)","E(Y^1) - E(Y^2)") # estimands to summarize in plots, from c("E(Y^1)","E(Y^2)","E(Y^3)","E(Y^1) - E(Y^2)")
+exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
+                       "2-stage WD", "weighted 2-stage WD",
+                       "Lu-rand", "Lu-obs/rand1", "Lu-obs/rand2") # Estimators in my_tables to exclude from plot
+
+
+my_tables2 = my_tables[my_tables$Estimand %in% my_estimands & 
+                         my_tables$Estimator %notin%  exclude_estimators,] %>% 
+  mutate(Estimator = gsub("weighted","",Estimator),
+         Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
+         Estimator = factor(Estimator, levels = c("Rand","Lu-rand",
+                                                  "Obs/rand",
+                                                  "Lu-obs/rand1",
+                                                  "Lu-obs/rand2",
+                                                  " 2-stage WD",
+                                                  "CCDS-OR","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW")),
+         Abs_Bias = abs(Bias),
+         RMSE = sqrt(MSE),
+         RMSE_minus_Abs_Bias = RMSE - Abs_Bias)
+
+my_ylim=c(0,max(sqrt(my_tables2$MSE), na.rm=T))
+
+# Ensure facet_grid labels include exponents and line breaks
+my_estimands = factor(my_estimands, levels = my_estimands, labels = my_estimands)
+my_tables2$Type = factor(my_tables2$Type, labels = c(~atop("Ensemble", "estimated overlap")))
+
+############################################################################################
+### Plots of predictions and biases (population average treatment mean, PATM, perspective)
+### Plot of population mean estimates
+############################################################################################
+my_tables2 %>% 
+  select(Type, Estimand, Estimator, Abs_Bias, RMSE_minus_Abs_Bias) %>% 
+  gather(Statistic, Amount, Abs_Bias:RMSE_minus_Abs_Bias) %>% 
+  ggplot(., aes(x=Estimator, y=Amount, fill=forcats::fct_rev(Statistic))) +
+  geom_bar(stat="identity", show.legend = FALSE) +
+  theme_bw() + #base_size = 35
+  xlab("") + ylab("Bias/RMSE") + ylim(my_ylim) +
+  facet_grid(factor(Estimand,levels=my_estimands) ~ factor(Type), scales = "free",labeller = "label_parsed") +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        plot.caption = element_text(hjust = 0, face= "italic"))+ 
+  scale_fill_manual(values=(c("#b2df8a","#1f78b4"))) 
+
+```

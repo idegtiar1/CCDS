@@ -1,0 +1,453 @@
+---
+title: "Generalizability Results - NYC Medicaid analysis"
+author: ""
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: sandstone
+    toc: true
+    number_sections: true
+    # toc_depth: 3
+    toc_float: true
+    # toc_collapsed: false
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, warning = FALSE)#, cache.lazy = FALSE)
+
+```
+<!-- NOTE: if compilation error occurs "! LaTeX Error: Unknown float option `H'." then modify the pop_ave_table code chunk (e.g., add a space somewhere) and re-run. I have marked these sections with "# NOTE: NEED TO RERUN THIS CODE CHUNK EACH TIME YOU BUILD THE PDF." There's some funkiness going on with compiling...-->
+
+# **Methods and source code**
+The following presents results from an analysis examining the effect of using different generalizability estimators to combine randomized and/or observational data from NYC Medicaid health plans to assess log health spending among the target population of all NYC Medicaid patients. Results were obtained in "1_Gen_estimates.R" saved in "Code\\Real data\\New_Medicaid_data".        
+
+This report presents a comparison of several novel conditional cross-design sythesis methods for generalizing study findings to a target population, comparing to an estimator that just uses randomized data and one that uses estimates from randomized and observational data, respectively. These estimators are summarized in the "Novel estimator" report. 
+
+All analysis was performed using R version 3.4.3. A Bonferroni adjustment was made to the confidence intervals to assess simultaneous 95% coverage: each marginal CI was constructed at the $1-0.05/k$ level, where $k=10$ plans for the population mean estimates.  
+  
+ 
+```{r load_libraries, include=F, output=F, message=FALSE}
+rm(list=ls())
+
+## Load libraries
+library(tidyverse) # for data manipulation
+library(knitr) # pretty tables
+library(kableExtra) # prettier tables
+library(ggthemes) # pretty colors for ggplots 
+library(gridExtra) # for arranging ggplots 
+library(magrittr) # for data manipulation (set_colnames)  
+library(fst) # for storing large data frames/tables
+library(qs) # for storing large data
+library(mefa4) # for %notin% function 
+library(SuperLearner) # for ensemble
+source("/Code/Real data/Helper_files/helper_functions.R")
+
+# Set ggplot theme 
+theme_set(theme_bw())  
+
+# Parameters 
+m = 500
+n_obs_select = "All"
+n_estimators = 9
+levels_A = c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+levels_A_updated = c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+
+# Ensemble library 
+SL.glmnet.alt = create.Learner("SL.glmnet", tune = list(alpha = 0.5)) 
+my_SL_library = c("SL.glm", SL.glmnet.alt$names, "SL.gam", "SL.nnet")
+file_suffix = "_fast"
+
+```
+
+```{r load_data}
+#########################################################################################
+# Load generalizability results
+results_directory = "/Results & output/Real_data/"
+
+# Linear models
+estimates_linear = readRDS(paste0(results_directory,"estimates_linear_nobs",n_obs_select,".rds")) 
+boot_linear = readRDS(paste0(results_directory,"boot_linear_nobs",n_obs_select,"_M",m,".rds")) 
+colnames(boot_linear) = colnames(estimates_linear) # Fix column names getting messed up due to adding STSMs
+
+# Ensemble of models
+estimates_ensemble = readRDS(paste0(results_directory,"estimates_ensemble",file_suffix,"_nobs",n_obs_select,".rds"))
+boot_ensemble = readRDS(paste0(results_directory,"boot_ensemble",file_suffix,"_nobs",n_obs_select,"_M",m,".rds"))
+
+# Linear models with overlap2
+estimates_linear_overlap2 = readRDS(paste0(results_directory,"estimates_linear_overlap2_nobs",n_obs_select,".rds"))
+boot_linear_overlap2 = readRDS(paste0(results_directory,"boot_linear_overlap2_nobs",n_obs_select,"_M",m,".rds"))
+colnames(boot_linear_overlap2) = colnames(estimates_linear_overlap2) # Fix column names getting messed up due to adding STSMs
+
+```
+
+Note: results use all randomized data and a 10\% random subset of observational beneficiaries to reduce computational burden. Confidence intervals were derived from a bootstrap using `r m` replications for now.   
+
+All sample average treatment-specific mean (STSM) estimates were derived using a TMLE SuperLearner ensemble approach (regardless if population average treatment-specific mean, PTSM, estimates used linear or ensemble models). 
+
+
+# **Linear models**
+## Sample Treatment-Specific Means (STSMs)
+```{r results_linear_STSM, fig.height=8, fig.width=7} 
+# Get summary table
+table_linear = get_summary_table(estimates_linear, boot_linear, levels_A = levels_A, ensemble = F)
+
+# Add color grouping for estimators
+table_linear_STSM = table_linear %>% filter(Estimator %in% c("STSM rand OR", "STSM obs OR", # OR = outcome regression
+                                                             "STSM rand AIPW", "STSM rand TMLE", 
+                                         "STSM obs AIPW", "STSM obs TMLE")) %>% 
+  mutate(Estimator2 = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "AIPW",
+                       ifelse(Estimator %in% c("STSM rand TMLE", "STSM obs TMLE"), "TMLE",
+                              ifelse(Estimator %in% c("STSM rand OR", "STSM obs OR"), "OR",
+                              "Other"))),
+         Data = ifelse(Estimator %in% c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE"), "rand",
+                       ifelse(Estimator %in% c("STSM obs OR", "STSM obs AIPW", "STSM obs TMLE"), "obs",
+                              "Other"))) %>% 
+    mutate(Estimator2 = factor(Estimator2, levels = c("OR", "AIPW", "TMLE")),
+           Data = factor(Data, levels = c("rand", "obs")))
+
+# Re-order plans based on rand study averages  
+levels_A_sorted = levels(fct_reorder(table_linear_STSM[table_linear_STSM$Data=="rand","Intervention"], 
+                                     table_linear_STSM[table_linear_STSM$Data=="rand","Estimate"], mean)) 
+table_linear$Intervention = table_linear$Intervention %>%  
+  factor(., levels =levels_A_sorted) 
+table_linear_STSM$Intervention = table_linear_STSM$Intervention %>% 
+  factor(., levels =levels_A_sorted) 
+
+# Plot results
+dodge <- position_dodge(width=0.5)  
+table_linear_STSM %>% 
+  ggplot(aes(x=Intervention, y = Estimate, col=Data)) +  
+  geom_point(size=1, position=dodge) +
+  geom_pointrange(aes(x=Intervention, ymin=`2.5% Adj`, ymax=`97.5% Adj`), position=dodge)+
+  theme_bw() + 
+  xlab("") + ylab("log spending")+
+  facet_wrap(~ Estimator2) +
+  theme(legend.position="bottom", legend.title = element_blank()) +
+  ggtitle("Study counterfactual treatment means and 95% CI") 
+```
+
+## Propensity for selection \& overlap
+![](/Results & output/Real_data/plot_overlap_linear.png){width=50%}
+![](/Results & output/Real_data/plot_log_overlap_linear.png){width=50%}
+
+The linear model used a = 0.08 with the propensity score logit and b = 656 (valued obtained by running helper_functions code in RStudio on server).
+
+## All results
+```{r results_linear_all}
+# Plot  results 
+plot_results(table_linear, levels_A_sorted) + facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)      
+```
+
+```{r results_linear_other}
+# Percent overlap  
+round(estimates_linear[,c("mean_overlap_obs", "mean_overlap_rand", "mean_overlap_target")]*100,1)
+ 
+# Overlap propensity range
+estimates_linear[,c("min_p_overlap", "max_p_overlap")] %>% round(2)
+ 
+# Number of trimmed propensities
+paste0("Number of trimmed propensities")
+estimates_linear[,c(which(colnames(estimates_linear)=="n_trim_w1.A"):which(colnames(estimates_linear)=="n_trim_w4.J"))] %>% 
+  round(5) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("w1","w2","w3","w4"))
+estimates_linear[,c("n_trim_w_bias","n_trim_w_bias_wd")] %>% round(5)
+
+# Observed bias
+paste0("Mean observed bias (diff observed vs. predicted outcome on plan)")
+estimates_linear[,c(which(colnames(estimates_linear)=="mean_bias_obs_observed.A"):
+                      which(colnames(estimates_linear)=="mean_bias_rand_overlap_observed.J"))] %>% 
+  round(2) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("Obs",
+                                                                               "Rand",
+                                                                               "Rand overlap"))
+
+# Difference between highest- and lowest-spending plan
+paste0("Smallest spending: ",levels_A_sorted[1])
+paste0("Largest spending: ",tail(levels_A_sorted, n=1))
+table_linear %>% filter(Intervention %in% c(levels_A_sorted[1], tail(levels_A_sorted, n=1))) %>% 
+  group_by(Estimator) %>% 
+  select(Estimator, Intervention, Estimate) %>% 
+  spread(Intervention, Estimate) %>% 
+  dplyr::summarize(diff_from_most_expensive = !!as.symbol(tail(levels_A_sorted, n=1)) - !!as.symbol(levels_A_sorted[1]),
+                   percent_difference = diff_from_most_expensive/!!as.symbol(levels_A_sorted[1])*100) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+
+## Subset of estimators
+```{r results_linear_subset} 
+# Plot results for subset of CCDS estimators
+plot_results(table_linear %>% filter(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW",   
+                                                      "Rand OR", "Obs/rand OR",
+                                                      "CCDS-AIPW", "2-stage CCDS")), levels_A_sorted) + 
+  facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)  
+```
+
+## Table
+```{r results_linear_table} 
+table_linear %>% arrange(Intervention) %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+<!--------------------------------------------------------------------------------------------------------------------------------------------->
+
+# **Ensemble models**
+## Sample Treatment-Specific Means (STSMs)
+```{r results_ensemble_STSM, fig.height=8, fig.width=7}
+# Get summary table
+table_ensemble = get_summary_table(estimates_ensemble, boot_ensemble, levels_A = levels_A, ensemble = F)
+
+# Add color grouping for estimators
+table_ensemble_STSM = table_ensemble %>% filter(Estimator %in% c("STSM rand OR", "STSM obs OR",
+                                                             "STSM rand AIPW", "STSM rand TMLE", 
+                                         "STSM obs AIPW", "STSM obs TMLE")) %>% 
+  mutate(Estimator2 = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "AIPW",
+                       ifelse(Estimator %in% c("STSM rand TMLE", "STSM obs TMLE"), "TMLE",
+                              ifelse(Estimator %in% c("STSM rand OR", "STSM obs OR"), "OR",
+                              "Other"))),
+         Data = ifelse(Estimator %in% c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE"), "rand",
+                       ifelse(Estimator %in% c("STSM obs OR", "STSM obs AIPW", "STSM obs TMLE"), "obs",
+                              "Other"))) %>% 
+    mutate(Estimator2 = factor(Estimator2, levels = c("OR", "AIPW", "TMLE")),
+           Data = factor(Data, levels = c("rand", "obs")))
+
+# Re-order plans based on study averages & replace plan X with J 
+table_ensemble$Intervention = table_ensemble$Intervention %>% recode_factor(., "X" = "J") %>%  
+  factor(., levels =levels_A_sorted) 
+table_ensemble_STSM$Intervention = table_ensemble_STSM$Intervention %>% recode_factor(., "X" = "J") %>% 
+  factor(., levels =levels_A_sorted) 
+
+# Plot results
+dodge <- position_dodge(width=0.5)  
+table_ensemble_STSM %>% 
+  ggplot(aes(x=Intervention, y = Estimate, col=Data)) + 
+  geom_point(size=1, position=dodge) +
+  geom_pointrange(aes(x=Intervention, ymin=`2.5% Adj`, ymax=`97.5% Adj`), position=dodge)+
+  theme_bw() + 
+  xlab("") + ylab("log spending")+
+  facet_wrap(~ Estimator2) +
+  theme(legend.position="bottom", legend.title = element_blank()) +
+  ggtitle("Study counterfactual treatment means and 95% CI") 
+```
+
+## Propensity for selection \& overlap
+![](/Results & output/Real_data/plot_overlapensemble.png){width=50%}
+![](/Results & output/Real_data/plot_log_overlapensemble.png){width=50%}
+
+## All results
+*PAPER APPENDIX FIGURE 12* (figure:results_Medicaid_all)
+```{r results_ensemble_all}
+# Plot  results
+plot_results(table_ensemble, levels_A_sorted) + facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)      
+```
+
+```{r results_ensemble_other}
+# Percent overlap  
+round(estimates_ensemble[,c("mean_overlap_obs", "mean_overlap_rand", "mean_overlap_target")]*100,1)
+
+# Overlap propensity range
+estimates_ensemble[,c("min_p_overlap", "max_p_overlap")] %>% round(2)
+
+# Number of trimmed propensities
+paste0("Number of trimmed propensities")
+estimates_ensemble[,c(which(colnames(estimates_ensemble)=="n_trim_w1.A"):which(colnames(estimates_ensemble)=="n_trim_w4.J"))] %>% 
+  round(5) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("w1","w2","w3","w4"))
+estimates_ensemble[,c("n_trim_w_bias","n_trim_w_bias_wd")] %>% round(5)
+
+# Observed bias
+paste0("Mean observed bias (diff observed vs. predicted outcome on plan)")
+estimates_ensemble[,c(which(colnames(estimates_ensemble)=="mean_bias_obs_observed.A"):
+                      which(colnames(estimates_ensemble)=="mean_bias_rand_overlap_observed.J"))] %>% 
+  round(2) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("Obs",
+                                                                               "Rand",
+                                                                               "Rand overlap"))
+
+# Difference between highest- and lowest-spending plan
+paste0("Smallest spending: ",levels_A_sorted[1])
+paste0("Largest spending: ",tail(levels_A_sorted, n=1))
+table_ensemble %>% filter(Intervention %in% c(levels_A_sorted[1], tail(levels_A_sorted, n=1))) %>% 
+  group_by(Estimator) %>% 
+  select(Estimator, Intervention, Estimate) %>% 
+  spread(Intervention, Estimate) %>% 
+  dplyr::summarize(diff_from_most_expensive = !!as.symbol(tail(levels_A_sorted, n=1)) - !!as.symbol(levels_A_sorted[1]),
+                   percent_difference = diff_from_most_expensive/!!as.symbol(levels_A_sorted[1])*100) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Summarize algorithm weights
+paste0("Algorithm weights")
+mean_alg_weights_sim = apply(boot_ensemble[,c(which(colnames(boot_ensemble)==paste0("S_",my_SL_library[1])):
+                                              which(colnames(boot_ensemble)==paste0("obs_overlap_",tail(my_SL_library,1))))],2,mean)
+n_table_rows = length(mean_alg_weights_sim)/11 # 11 = number of regressions being estimated
+mean_alg_weights_sim %>%
+  matrix(.,nrow= length(my_SL_library)) %>%
+  set_rownames(my_SL_library) %>%
+  set_colnames(c("S", "Roverlap_rand","Roverlap_obs",
+                 apply(expand.grid("A_rand", levels_A), 1, paste, collapse="."),
+                 apply(expand.grid("A_obs", levels_A), 1, paste, collapse="."),
+                 apply(expand.grid("A_rand_overlap", levels_A), 1, paste, collapse="."),
+                 apply(expand.grid("A_obs_overlap", levels_A), 1, paste, collapse="."),
+                 "rand","obs","rand_overlap","obs_overlap")) %>%
+  round(2) %>% kable("html") %>%
+  kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+  
+```
+
+
+
+## Subset of estimators
+*PAPER FIGURE 4* (figure:results_Medicaid)
+```{r results_ensemble_subset} 
+# Plot results for subset of CCDS estimators
+plot_results(table_ensemble %>% filter(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW",  
+                                                      "Rand OR", "Obs/rand OR",
+                                                      "CCDS-AIPW", "2-stage CCDS")), levels_A_sorted) + 
+  facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)   
+```
+
+## Differences CCDS-AIPW vs. rand estimates
+Note: min/max values are the mins/maxes for each respective column and don't necessarily all refer to the same row of data.
+```{r rand_aipw_diff}
+# Difference between CCDS-AIPW vs. rand estimates
+table_diff = table_ensemble  %>%
+    group_by(Intervention) %>%
+    arrange(Estimator ) %>%
+    summarize(diff = Estimate[Estimator == "CCDS-AIPW"] - Estimate[Estimator == "Rand OR"],
+           p_diff = diff/Estimate[Estimator == "Rand OR"]*100,
+           diff_dollar = exp(Estimate[Estimator == "CCDS-AIPW"]) - exp(Estimate[Estimator == "Rand OR"])) %>% 
+  select(Intervention, diff,p_diff,diff_dollar)
+
+# Min & max
+print("min"); apply(table_diff,2,min)
+print("max"); apply(table_diff,2,max)
+
+# Table
+table_diff %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+## Table
+```{r results_ensemble_table} 
+table_ensemble %>% arrange(Intervention) %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+
+
+<!--------------------------------------------------------------------------------------------------------------------------------------------->
+# **Linear models with large overlap region**
+These results were obtained with overlap2 overlap region specifications: a = 0.05 for the propensity score and b = 10, which results in effectively 100\% of the data being deemed to be in the overlap region. 
+
+As also seen in the simulation, impact estimates are minimally impacted: CCDS-AIPW estimates shift slightly closer to the rand estimates (as expected, since almost all the data being in the overlap region brings estimates closer to the rand estimator); 2-stage CCDS estimates are not notably affected; CCDS-IPW's estimates were most impacted (as also seen in the simulation) -- its point estimates shifted and CI shrunk.
+
+## Sample Treatment-Specific Means (STSMs)
+```{r results_linear_overlap2_STSM, fig.height=8, fig.width=7} 
+# Get summary table
+table_linear_overlap2 = get_summary_table(estimates_linear_overlap2, boot_linear_overlap2, levels_A = levels_A, ensemble = F)
+
+# Add color grouping for estimators
+table_linear_overlap2_STSM = table_linear_overlap2 %>% filter(Estimator %in% c("STSM rand OR", "STSM obs OR",
+                                                             "STSM rand AIPW", "STSM rand TMLE", 
+                                         "STSM obs AIPW", "STSM obs TMLE")) %>% 
+  mutate(Estimator2 = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "AIPW",
+                       ifelse(Estimator %in% c("STSM rand TMLE", "STSM obs TMLE"), "TMLE",
+                              ifelse(Estimator %in% c("STSM rand OR", "STSM obs OR"), "OR",
+                              "Other"))),
+         Data = ifelse(Estimator %in% c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE"), "rand",
+                       ifelse(Estimator %in% c("STSM obs OR", "STSM obs AIPW", "STSM obs TMLE"), "obs",
+                              "Other"))) %>% 
+    mutate(Estimator2 = factor(Estimator2, levels = c("OR", "AIPW", "TMLE")),
+           Data = factor(Data, levels = c("rand", "obs")))
+
+# Re-order plans based on study averages 
+levels_A_sorted = levels(fct_reorder(table_linear_overlap2_STSM$Intervention, table_linear_overlap2_STSM$Estimate, mean)) #%>% 
+  #recode(., "X" = "J")
+table_linear_overlap2$Intervention = table_linear_overlap2$Intervention %>%  
+  factor(., levels =levels_A_sorted) 
+table_linear_overlap2_STSM$Intervention = table_linear_overlap2_STSM$Intervention %>%  
+  factor(., levels =levels_A_sorted) 
+
+# Plot results
+dodge <- position_dodge(width=0.5)  
+table_linear_overlap2_STSM %>% 
+  ggplot(aes(x=Intervention, y = Estimate, col=Data)) + 
+  geom_point(size=1, position=dodge) +
+  geom_pointrange(aes(x=Intervention, ymin=`2.5% Adj`, ymax=`97.5% Adj`), position=dodge)+
+  theme_bw() + 
+  xlab("") + ylab("log spending")+
+  facet_wrap(~ Estimator2) +
+  theme(legend.position="bottom", legend.title = element_blank()) +
+  ggtitle("Study counterfactual treatment means and 95% CI") 
+```
+
+## Propensity for selection \& overlap
+![](/Results & output/Real_data/plot_overlap_linear_overlap2.png){width=50%}
+![](/Results & output/Real_data/plot_log_overlap_linear_overlap2.png){width=50%}
+
+The linear model used a = 0.08 with the propensity score logit and b = 656 (valued obtained by running helper_functions code in RStudio on server).
+
+## All results
+```{r results_linear_overlap2_all}
+# Plot  results 
+plot_results(table_linear_overlap2, levels_A_sorted) + facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)      
+```
+
+```{r results_linear_overlap2_other}
+# Percent overlap  
+round(estimates_linear_overlap2[,c("mean_overlap_obs", "mean_overlap_rand", "mean_overlap_target")]*100,1)
+ 
+# Overlap propensity range
+estimates_linear_overlap2[,c("min_p_overlap", "max_p_overlap")] %>% round(2)
+ 
+# Number of trimmed propensities
+paste0("Number of trimmed propensities")
+estimates_linear_overlap2[,c(which(colnames(estimates_linear_overlap2)=="n_trim_w1.A"):which(colnames(estimates_linear_overlap2)=="n_trim_w4.J"))] %>% 
+  round(5) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("w1","w2","w3","w4"))
+estimates_linear_overlap2[,c("n_trim_w_bias","n_trim_w_bias_wd")] %>% round(5)
+
+# Observed bias
+paste0("Mean observed bias (diff observed vs. predicted outcome on plan)")
+estimates_linear_overlap2[,c(which(colnames(estimates_linear_overlap2)=="mean_bias_obs_observed.A"):
+                      which(colnames(estimates_linear_overlap2)=="mean_bias_rand_overlap_observed.J"))] %>% 
+  round(2) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("Obs",
+                                                                               "Rand",
+                                                                               "Rand overlap"))
+
+# Difference between highest- and lowest-spending plan
+paste0("Smallest spending: ",levels_A_sorted[1])
+paste0("Largest spending: ",tail(levels_A_sorted, n=1))
+table_linear_overlap2 %>% filter(Intervention %in% c(levels_A_sorted[1], tail(levels_A_sorted, n=1))) %>% 
+  group_by(Estimator) %>% 
+  select(Estimator, Intervention, Estimate) %>% 
+  spread(Intervention, Estimate) %>% 
+  dplyr::summarize(diff_from_most_expensive = !!as.symbol(tail(levels_A_sorted, n=1)) - !!as.symbol(levels_A_sorted[1]),
+                   percent_difference = diff_from_most_expensive/!!as.symbol(levels_A_sorted[1])*100) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+
+## Subset of estimators
+```{r results_linear_overlap2_subset} 
+# Plot results for subset of CCDS estimators
+plot_results(table_linear_overlap2 %>% filter(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW",  
+                                                      "Rand OR", "Obs/rand OR",
+                                                      "CCDS-AIPW", "2-stage CCDS")), levels_A_sorted) + 
+  facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)   
+```
+
+## Table
+```{r results_linear_overlap2_table} 
+table_linear_overlap2 %>% arrange(Intervention) %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+

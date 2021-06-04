@@ -1,0 +1,877 @@
+---
+title: "Medicaid EDA - Observational and Randomized Data"
+author: ""
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: sandstone
+    toc: true
+    number_sections: true
+    # toc_depth: 3
+    toc_float: true
+    # toc_collapsed: false
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, warning = FALSE)#, cache.lazy = FALSE) 
+# NOTE: if there's knitting trouble due to something involving "$", just change a code chunk in the upper half of the doc (before the inline mean/median summaries of bene characteristics) and it should run fine.
+```
+# CONSORT diagram
+## Randomized data (auto-assignees)   
+1,471,658 enrollment observations -> 87,405 beneficiaries -> 65,591 beneficiaries with at least 6 months of follow-up.  
+
+## Observational data (active choosers)  
+10\% random sample = 2,079,762 enrollment observations -> 113,598 beneficiaries -> 98,232 beneficiaries with at least 6 months of follow-up.  
+
+In the original data, after restricting to those with at least 6 months of follow-up, auto-assignees make are 7.03% of the sample with 67,619 recipients while the active choosers are 92.97% of the sample with 894,884 recipients. The numbers don't exactly align with those above as the original data numbers can include multiple episodes per beneficiary. Assuming the 10\% random sample results in 10x as many benes as were observed in the sample would mean that randomized data makes up `r round(65591/(65591+982320)*100,2)`\% of the target sample.
+
+The below tables compare baseline characteristics for all beneficiaries (Table 1), and for those with at least 6 months of follow-up (which we will be using as our target sample, all subsequent tables). Those with at least 6 mo of data were more likely to be in the observational group (60% vs. 41% of benes), had higher spending over 6 months (naturally, as missing spending counted as zero spending), were on a different distribution of plans, were slightly more likely to be female, more likely to be Asian/Pacific Islander, came from a different distribution of counties and neighborhoods and aid groups, and were less likely to be eligible for SSI. Largely, these align with the characteristics that distinguish observational from randomized data (though the differences are not as extreme). 
+
+```{r libraries, include=F}
+# Rerun if get error of "undefined control sequence""!!!
+rm(list=ls())
+library(qs) # for reading in qs files
+library(tidyverse) # for data manipulation
+library(knitr) # for data manipulation
+library(dplyr) # for processing pre-ggplot  
+library(kableExtra) # fancy tables
+library(tableone) # generating a Table 1 
+library(ggplot2) # plots
+library(gridExtra) # arranging plots  
+library(grid) # arranging plots 
+library(scales) # for formatting percents in plots
+library("RColorBrewer") # for ggplot color scales 
+library(corrplot) # correlation plot 
+library(data.table) # for rearranging correlation data 
+library(kernlab) # for ksvm modeling
+library(SuperLearner) # for ensemble modeling
+library(magrittr) # for set_colnames function
+
+# Set ggplot theme 
+theme_set(theme_bw())  
+```
+  
+# Table 1a. Subject characteristics by 6 mo of data
+Comparing subjects with less than 6 mo of data vs. those with at least 6 mo of data 
+```{r summary_tables, size="tiny"}
+### Load data 
+target_sample_plus = qread("/data/NYS_Medicaid/Name/target_sample_6mo_wide.qs") 
+target_sample = qread("/data/NYS_Medicaid/Name/target_sample_relevant.qs") 
+
+### Summary data
+table_vars = c("aa_sample", "pay0tot_0to5","plan_baseline_clean",
+               "age","female", 
+               "race", "borough", "neighborhood", 
+               "aid_group_clean120", "ssi", 
+               "baseline_decile_clean", "baseline_decile_missing", "percent_poverty")
+dataForTableOne = target_sample_plus[,c("in_sample_6",table_vars)]
+X_vars = c("Age", "Sex", 
+           "Race", "County", "Neighborhood", 
+           "Aid_group", "Eligible_for_SSI", 
+           "Baseline_spending_decile","Missing_baseline_spending","Percent_neighborhood_poverty")
+colnames(dataForTableOne) = c("Six_months_of_data","Study", "spending_over_6_mo", "Plan", X_vars)
+dataForTableOne$Race <- factor(dataForTableOne$Race, levels=c("White non-Hispanic","Black","Asian or Pacific Islander","American Indian or Alaskan Native","Other"))
+dataForTableOne$Aid_group <- factor(dataForTableOne$Aid_group, levels=c("MA_SN_ADULT","MA_SN_CHILD","MA_SSI_BD","MA_TANF_ADULT","MA_TANF_CHILD",
+                                                                        "SN_ADULT","SN_CHILD","SSI_BD","TANF_ADULT","TANF_CHILD","OTHER"))
+dataForTableOne$Study = as.factor(as.character(dataForTableOne$Study)) %>% 
+  plyr::revalue(., c("1"="Randomized","0"="Observational"))
+dataForTableOne$Study = factor(dataForTableOne$Study, levels = c("Randomized","Observational"))
+dataForTableOne$Sex = as.factor(as.character(dataForTableOne$Sex)) %>% plyr::revalue(., c("1"="F","0"="M"))
+
+factor_vars = c("Six_months_of_data","Plan","Sex","Race", "County", "Neighborhood", 
+                "Aid_group", "Eligible_for_SSI","Missing_baseline_spending")
+table1 = CreateTableOne(colnames(dataForTableOne), strata="Six_months_of_data", data=dataForTableOne,
+               factorVars = factor_vars)
+# table1
+kableone(table1)
+
+```
+  
+# Table 1b. Subject characteristics by study type
+Restricted to subjects with 6 months of follow-up: randomized vs. observational 
+*PAPER APPENDIX TABLE 3* (table:MedicaidTable1)
+```{r summary_tables_b, size="tiny"}
+dataForTableOne6mo = dataForTableOne %>% filter(Six_months_of_data == 1)
+
+# Create Table 1
+table1_6mo = CreateTableOne(colnames(dataForTableOne6mo), strata="Study", data=dataForTableOne6mo,
+               factorVars = factor_vars)
+kableone(table1_6mo)
+
+## Data used for analysis
+# Use versions of variables input for analysis & relabel variables for interpretability
+table_vars2 = c("aa_sample", "lpay0tot_0to5","plan_baseline_clean",
+               "age_clean120", # "age_scaled",
+               "female", # "race", 
+               "neighborhood", 
+               "aid_group_clean120", "ssi", 
+               "baseline_decile_clean", "baseline_decile_missing", "percent_poverty")
+dataForTableOne6mo2 = target_sample[,table_vars2]
+X_vars = c("Age", "Sex", #"Race", 
+           "Neighborhood", 
+           "Aid_group", "Eligible_for_SSI", 
+           "Baseline_spending_decile","Missing_baseline_spending","Percent_neighborhood_poverty")
+colnames(dataForTableOne6mo2) = c("Study", "log_spending_over_6_mo", "Plan", X_vars)
+# dataForTableOne6mo2$Race <- factor(dataForTableOne6mo2$Race, levels=c("White non-Hispanic","Black",
+#                                                     "Asian or Pacific Islander","American Indian or Alaskan Native","Other"))
+dataForTableOne6mo2$Aid_group <- factor(dataForTableOne6mo2$Aid_group,
+                                       levels=c("MA_SN_ADULT","MA_SN_CHILD","MA_SSI_BD","MA_TANF_ADULT","MA_TANF_CHILD",
+                                                "SN_ADULT","SN_CHILD","SSI_BD","TANF_ADULT","TANF_CHILD","OTHER"))
+dataForTableOne6mo2$Study = as.factor(as.character(dataForTableOne6mo2$Study)) %>% 
+  plyr::revalue(., c("1"="Randomized","0"="Observational"))
+dataForTableOne6mo2$Study = factor(dataForTableOne6mo2$Study, levels = c("Randomized","Observational"))
+dataForTableOne6mo2$Sex = as.factor(as.character(dataForTableOne6mo2$Sex)) %>% plyr::revalue(., c("1"="F","0"="M"))
+dataForTableOne6mo2$log_spending_over_6_mo = dataForTableOne6mo2$log_spending_over_6_mo %>% as.numeric 
+dataForTableOne6mo2$Age = as.factor(as.character(dataForTableOne6mo2$Age)) # dataForTableOne6mo2$Age %>% as.numeric 
+
+```
+    
+*The p-values correspond to a t-test for continuous variables and a chi-squared test for categorical variables, with a continuity correction.*  
+  
+
+
+# Figure 1. Subject characteristics by plan  
+## a. Subject distribution
+```{r summary_tables_by_plan}
+
+# Plan
+p1 = ggplot(data=dataForTableOne6mo, aes(x=Plan)) + geom_bar(aes(fill=Plan)) + ylim(c(0,20000)) +
+  facet_grid( ~ factor(Study)) + #, scales = "free",labeller = "label_parsed") +
+  viridis::scale_fill_viridis(discrete = TRUE)  + 
+  theme(legend.position = "none")  + theme(plot.title = element_text(size=16)) + 
+  geom_text(stat='count', aes(label=..count..), vjust=-0.5, size=2.5) 
+
+# Age
+p2 = ggplot(data=dataForTableOne6mo, aes(x=Age, color=Plan)) + geom_density() +
+  facet_grid( ~ factor(Study)) +
+  viridis::scale_color_viridis(discrete = TRUE) + theme(legend.position = "none") #+ ylim(c(0,0.05))
+
+# Sex
+p3 = ggplot(data=dataForTableOne6mo, aes(x=Sex)) + geom_bar(aes(y = ..prop.., group=Study)) + labs(y = "Percent") +
+  facet_grid( ~ Study) +
+  theme(legend.position = "none") +  scale_y_continuous(labels = percent, limits = c(0,0.7)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5)
+
+# Race
+dataForTableOne6mo$Race = plyr::revalue(dataForTableOne6mo$Race, 
+         c("American Indian or Alaskan Native"="Am Indian",
+           "Asian or Pacific Islander"="Asian"))
+
+p4 = ggplot(data=dataForTableOne6mo, aes(x=Race)) + geom_bar(aes(y = ..prop.., group=Study)) + labs(y = "Percent") +
+  facet_grid( ~ Study) +
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) + #, size=7)) +  
+  scale_y_continuous(labels = percent, limits = c(0,0.6)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5)
+
+# County
+p5 = ggplot(data=dataForTableOne6mo, aes(x=County)) + geom_bar(aes(y = ..prop.., group=Study)) + labs(y = "Percent") +
+  facet_grid( ~ Study) +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1)) + scale_y_continuous(labels = percent, limits = c(0,0.37)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5)  
+
+# Neighborhood
+dataForTableOne6mo$Neighborhood = reorder(dataForTableOne6mo$Neighborhood,dataForTableOne6mo$Neighborhood,FUN=length) # reorder by frequency
+
+p6 = ggplot(data=dataForTableOne6mo, aes(x=Neighborhood)) + geom_bar(aes(y = ..prop.., group=Study)) + labs(y = "Percent") +
+  facet_grid( ~ Study) +
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_blank()) + scale_y_continuous(labels = percent) 
+
+# Aid group
+dataForTableOne6mo$Aid_group = reorder(dataForTableOne6mo$Aid_group,dataForTableOne6mo$Aid_group,FUN=length) # reorder by frequency
+
+p7 = ggplot(data=dataForTableOne6mo, aes(x=Aid_group))  + geom_bar(aes(y = ..prop.., group=Study)) +
+  facet_grid( ~ Study) + 
+  labs(y = "Percent", x = "Aid group") +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1, size = 7)) + theme(legend.position = "none") + 
+  scale_y_continuous(labels = percent, limits = c(0,0.7)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5)
+
+# SSI
+p8 = ggplot(data=dataForTableOne6mo, aes(x=Eligible_for_SSI))  + geom_bar(aes(y = ..prop.., group=Study)) +
+  facet_grid( ~ Study) + 
+  labs(y = "Percent") + theme(legend.position = "none") + 
+  scale_y_continuous(labels = percent, limits = c(0,1.1)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5) + labs(x = "Eligible for SSI")
+
+# Baseline spending decile
+p9 = ggplot(data=dataForTableOne6mo, aes(x=Baseline_spending_decile))  + geom_bar(aes(y = ..prop.., group=Study)) +
+  facet_grid( ~ Study) + 
+  labs(y = "Percent") + theme(legend.position = "none") + 
+  scale_y_continuous(labels = percent, limits = c(0,0.8)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5) + labs(x = "Baseline spending decile")
+
+# Missing baseline spending decile
+p10 = ggplot(data=dataForTableOne6mo, aes(x=Missing_baseline_spending))  + geom_bar(aes(y = ..prop.., group=Study)) +
+  facet_grid( ~ Study) + 
+  labs(y = "Percent") + theme(legend.position = "none") + 
+  scale_y_continuous(labels = percent, limits = c(0,1.1)) +
+  geom_text(aes( label = scales::percent(..prop..), y= (..prop..), group=Study), stat= "count", 
+            vjust = -.5, size=2.5) + labs(x = "Missing baseline spending")
+
+# Percent neighborhood poverty
+p11 = ggplot(data=dataForTableOne6mo, aes(x=Percent_neighborhood_poverty, color=Plan)) + geom_density() +#+ xlim(-5,1500) +
+  facet_grid( ~ Study) +
+  viridis::scale_color_viridis(discrete = TRUE) + theme(legend.position = "none") + #ylim(c(0,0.0025)) +
+  theme(plot.caption=element_text(hjust = 1.2, size=8)) + labs(x = "Percent neighborhood poverty")
+
+# Spending
+p12 = ggplot(data=dataForTableOne6mo, aes(x=spending_over_6_mo, color=Plan)) + geom_density() +#+ xlim(-5,1500) +
+  facet_grid( ~ Study) +
+  viridis::scale_color_viridis(discrete = TRUE) + theme(legend.position = "none") + #ylim(c(0,0.0025)) +
+  theme(plot.caption=element_text(hjust = 1.2, size=8)) + 
+  labs(x="6 month spending")
+
+# Log spending
+p13 = ggplot(data=dataForTableOne6mo, aes(x=log(spending_over_6_mo), color=Plan)) + geom_density() + 
+  facet_grid( ~ Study) +
+  viridis::scale_color_viridis(discrete = TRUE) + theme(legend.position = "none") + 
+  labs(x="log 6 month spending")
+
+```
+
+```{r summary_fig_by_plan_a, fig.height=9, fig.width=5.5}    
+grid.arrange(p1,p2,p3,p4, ncol=1) #, heights= unit(c(2.7, rep(2, 2), 1.7), "in")) #8,8           
+```
+
+```{r summary_fig_by_plan_b, fig.height=9, fig.width=5.5}    
+grid.arrange(p5,p6,p7,p8, ncol=1) #, heights= unit(c(2.7, rep(2, 2), 1.7), "in")) #8,8        
+```
+
+```{r summary_fig_by_plan_c, fig.height=9.5, fig.width=5.5}   
+grid.arrange(p9,p10, p11,p12, p13, ncol=1) 
+```
+
+
+## b. Plan composition
+```{r summary_tables_by_plan_b}
+# Sex
+pp1 = ggplot(data=dataForTableOne6mo, aes(x=Plan, fill=Sex)) + geom_bar(position = "fill") + 
+  facet_grid( ~ Study)+
+  scale_y_continuous(labels = percent_format())  + ylab("Sex, percent") +
+  scale_fill_brewer(palette="RdYlGn") +
+  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) + 
+  theme(legend.key.size = unit(0.05, "in")) + 
+  theme(axis.title.x=element_blank(), legend.position="bottom")
+
+# Race
+pp2 = ggplot(data=dataForTableOne6mo, aes(x=Plan, fill=Race)) + geom_bar(position = "fill") + 
+  facet_grid( ~ Study) +
+  scale_y_continuous(labels = percent_format())  + ylab("Race, percent") +
+  scale_fill_brewer(palette="RdYlGn") +
+  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) + 
+  theme(legend.key.size = unit(0.05, "in")) + guides(fill=guide_legend(nrow=2, byrow=TRUE)) + 
+  theme(axis.title.x=element_blank(), legend.position="bottom")
+
+# County
+pp3 = ggplot(data=dataForTableOne6mo, aes(x=Plan, fill=County)) + geom_bar(position = "fill") + 
+  facet_grid( ~ Study) +
+  scale_y_continuous(labels = percent_format())  + ylab("County, percent") +
+  scale_fill_brewer(palette="RdYlGn") +
+  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) +  
+  theme(legend.key.size = unit(0.05, "in"), legend.position="bottom")
+
+
+# Neighborhood
+# Expand color palette
+colorCount = length(unique(dataForTableOne6mo$Neighborhood))
+getPalette = colorRampPalette(brewer.pal(9, "RdYlGn"))
+ 
+pp4 = ggplot(data=dataForTableOne6mo, aes(x=Plan, fill=Neighborhood)) + geom_bar(position = "fill") + 
+  facet_grid( ~ Study) +
+  scale_y_continuous(labels = percent_format())  + ylab("Neighborhood, percent") +
+  scale_fill_manual(values=getPalette(colorCount)) +
+  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) + 
+  theme(legend.key.size = unit(0.05, "in")) +
+  theme(axis.title.x=element_blank(), legend.position="bottom")
+
+# Aid group
+pp5 = ggplot(data=dataForTableOne6mo, aes(x=Plan, fill=Aid_group)) + geom_bar(position = "fill") + 
+  facet_grid( ~ Study) +
+  scale_y_continuous(labels = percent_format())  + ylab("Aid group, percent") +
+  scale_fill_brewer(palette="RdYlGn") +
+  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) + 
+  theme(legend.key.size = unit(0.05, "in")) +
+  theme(axis.title.x=element_blank(), legend.position="bottom")
+
+
+
+# SSI
+pp6 = ggplot(data=dataForTableOne6mo, aes(x=Plan, fill=Eligible_for_SSI)) + 
+  facet_grid( ~ Study) + 
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent_format())  + ylab("Eligible for SSI, percent") +
+  scale_fill_brewer(palette="RdYlGn") +
+  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) + 
+  theme(legend.key.size = unit(0.05, "in")) +
+  theme(axis.title.x=element_blank(), legend.position="bottom")
+```
+
+```{r summary_fig_by_plan_d, fig.height=2.8, fig.width=6.1} 
+#grid.arrange(pp1, pp2, pp3, ncol = 1)  
+pp1 
+pp2 
+pp3 
+``` 
+  
+```{r summary_fig_by_plan_e, fig.height=2.8, fig.width=6.1} 
+#grid.arrange(pp4, pp5, pp6, ncol = 1)
+pp4
+pp5
+pp6 
+```
+
+
+Categories with less than 120 observations were coded as "Other". So the SSI_AGED aid group category was coded as "OTHER" and beneficiaries that were 65 years old at baseline were recoded to 64 as they needed to be <65 at enrollment to be in the sample.  
+
+Randomized and observational individuals differed significantly across all variables (Table 1b). Compared to randomized patients, observational patients are slightly younger (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Age"]$Age),1)` vs `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Age"]$Age),1)` years old on average), spend less on average (mean spending of \$`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","spending_over_6_mo"]$spending_over_6_mo),0)` vs. \$`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","spending_over_6_mo"]$spending_over_6_mo),0)`; median spending of \$`r round(median(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","spending_over_6_mo"]$spending_over_6_mo),0)` vs \$`r round(median(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","spending_over_6_mo"]$spending_over_6_mo),0)`), were more likely to be female (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Sex"]=="F")*100,0)`% vs `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Sex"]=="F")*100,0)`%), had more Asian/Pacific Islander identifying individuals (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Race"]=="Asian")*100,0)`% vs `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Race"]=="Asian")*100,0)`%) and far fewer black identifying individuals (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Race"]=="Black")*100,0)`% vs `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Race"]=="Black")*100,0)`%), were less likely to come from Manhattan (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","County"]=="Manhattan")*100,0)`% vs `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","County"]=="Manhattan")*100,0)`%) and are more likely to come from Queens (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","County"]=="Queens")*100,0)`% vs. `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","County"]=="Queens")*100,0)`%), were more likely to be in the MA TANF ADULT aid group (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Aid_group"]=="MA_TANF_ADULT")*100,0)`% vs. `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Aid_group"]=="MA_TANF_ADULT")*100,0)`%) and less likely to be in the SN ADULT group (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Aid_group"]=="SN_ADULT")*100,0)`% vs. `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Aid_group"]=="SN_ADULT")*100,0)`%), and were less likely to be eligible for SSI (`r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Observational","Eligible_for_SSI"]==1)*100,0)`% vs `r round(mean(dataForTableOne6mo[dataForTableOne6mo$Study=="Randomized","Eligible_for_SSI"]==1)*100,0)`%). There was also some variability between plans, both in the randomized and observational data, in terms of year of enrollment, and in the observational data, on all other covariates as well (Figure 1). 
+
+# Figure 2. Total spending and median spending in first month post-enrollment
+```{r plots}
+spending_means = dataForTableOne6mo %>% mutate(log_spending_over_6_mo =log(spending_over_6_mo)) %>% 
+  group_by(Study) %>%
+  dplyr::summarise(median_spending=median(log_spending_over_6_mo))
+
+## Plot of log total annual spending over 6 month post-randomization (approximately normal)
+ggplot(data=dataForTableOne6mo, aes(x=log(spending_over_6_mo), color=Study, linetype=Study)) + geom_density() +
+  geom_vline(data=spending_means, aes(xintercept = median_spending, color=Study, linetype=Study)) +
+  #geom_vline(aes(xintercept = median(log(spending_over_6_mo)), color=Study)) + 
+  theme(legend.position = "bottom", legend.title = element_blank()) + 
+  labs(x="log 6 month spending")
+```
+  
+# Table 2. Average spending by plans over 6 months
+## a. Log total spending
+```{r spending_table_log}
+## Table of spending differences by plan
+dataForTableOne6mo %>% mutate(log_spending = log(spending_over_6_mo+1)) %>% 
+  group_by(Study,Plan) %>% dplyr::summarize(Mean = mean(log_spending), Median = median(log_spending), 
+                                     Quantile.2.5 = quantile(log_spending,0.025), Quantile.97.5 = quantile(log_spending,0.975)) %>% mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+  
+## b. Total spending    
+```{r spending_table_abs}
+dataForTableOne6mo %>% 
+  group_by(Study,Plan) %>% dplyr::summarize(Mean = mean(spending_over_6_mo), Median = median(spending_over_6_mo), 
+                                     Quantile.2.5 = quantile(spending_over_6_mo,0.025), Quantile.97.5 = quantile(spending_over_6_mo,0.975)) %>% mutate_if(is.numeric, round, 0) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+  
+The spending distribution looked similar to that of randomized individuals, although observational patients spent slightly less on average. Ordering plans by average spending resulted in a different ordering than for randomized individuals.  
+
+
+```{r propensity_fit}
+## Fit propensity scores for S and A
+# P(S=1|X)
+fit_S = cbind.data.frame(dataForTableOne6mo2$Study=="Randomized",dataForTableOne6mo2[,X_vars]) %>% glm(formula(.), data=.,family="binomial")
+# Warning message: glm.fit: fitted probabilities numerically 0 or 1 occurred - unstable because so many values close to zero
+pi_S = predict(fit_S,type = "response")
+pi_S = cbind.data.frame("Study" = dataForTableOne6mo2$Study,
+                        `Propensity score` = pi_S)
+
+# Add in study proportions
+study_proportions = dataForTableOne6mo2 %>% 
+  group_by(Study) %>% 
+  tally() %>% 
+  mutate(`Study proportion` = prop.table(n)) %>%      
+  select(-n) 
+
+pi_S = left_join(pi_S,study_proportions,by="Study")
+
+pi_S_means = pi_S %>%
+  group_by(Study) %>%
+  dplyr::summarise(mean_propensity=mean(`Propensity score`))
+
+# P(A|S=1,X)    
+fit_A_rand = dataForTableOne6mo2 %>% filter(Study %in% "Randomized") %>% select(c(Plan,all_of(X_vars))) %>% 
+  nnet::multinom(formula(.), data=., trace=F)
+pi_A_rand = predict(fit_A_rand,type = "probs")
+
+
+# P(A|S=0,X)
+fit_A_obs =  dataForTableOne6mo2 %>% filter(Study %in% "Observational") %>% select(c(Plan,all_of(X_vars))) %>% 
+  nnet::multinom(formula(.), data=., trace=F)
+pi_A_obs = predict(fit_A_obs,type = "probs")
+
+pi_A = rbind.data.frame(cbind(Study = "Randomized", pi_A_rand),
+                        cbind(Study = "Observational", pi_A_obs)) %>% 
+  gather(Plan, `Propensity score`, -Study)
+pi_A = pi_A %>% mutate(Study = as.factor(Study),
+                       Plan = as.factor(Plan),
+                       `Propensity score` = as.numeric(`Propensity score`))
+
+# Add in plan proportions
+plan_proportions = dataForTableOne6mo2 %>% 
+  group_by(Plan, Study) %>% 
+  tally() %>%
+  ungroup() %>% 
+  group_by(Study) %>% 
+  mutate(`Plan proportion` = prop.table(n)) %>%      
+  select(-n) 
+
+pi_A = left_join(pi_A,plan_proportions,by=c("Plan", "Study"))
+    
+
+```
+
+
+# Figure 3. Propensity for randomization from a linear model, density and mean
+```{r propensity_rand_fig}
+pi_S %>% ggplot(aes(x=`Propensity score`, col=Study, linetype=Study)) + 
+  geom_density() + 
+  geom_vline(data=pi_S_means, 
+             aes(xintercept=mean_propensity, col=Study, linetype=Study)) + # plan proportions
+  scale_fill_brewer() +
+  theme(legend.title=element_blank(), legend.position="bottom")
+
+
+```
+
+# Figure 4. Propensity for health plan from a linear model and plan proportions
+```{r propensity_fig, fig.height=4, fig.width=8}
+pi_A %>% ggplot(aes(x=`Propensity score`, col=Plan)) + 
+  geom_density() + 
+  geom_vline(aes(xintercept=`Plan proportion`, col=Plan, linetype=Plan)) + # plan proportions
+  facet_grid( ~ Study) + 
+  scale_fill_brewer() 
+```
+
+
+
+```{r propensity_fitb}
+## Fit propensity scores for S and A
+# P(S=1|X)
+S_target = dataForTableOne6mo2$Study=="Randomized"
+X_target_matrix = model.matrix(~.,dataForTableOne6mo2[,-c(1:3)])[,-1]
+X_rand_matrix = model.matrix(~.,dataForTableOne6mo2[dataForTableOne6mo2$Study=="Randomized",-c(1:3)])[,-1]
+X_obs_matrix = model.matrix(~.,dataForTableOne6mo2[dataForTableOne6mo2$Study=="Observational",-c(1:3)])[,-1]
+
+fit_S_ksvm = cbind.data.frame(S_target,X_target_matrix) %>% ksvm(formula(.), data=.,type="C-svc",prob.model=T)
+pi_S_ksvm = predict(fit_S_ksvm, as.data.frame(X_target_matrix),type="probabilities")[,2]
+qsave(pi_S_ksvm,"/Results/Generalizability_results/pi_S_ksvm.qs")
+# pi_S_ksvm = qread("/Results/Generalizability_results/pi_S_ksvm.qs")
+    
+pi_S_ksvm = cbind.data.frame("Study" = dataForTableOne6mo2$Study,
+                        `Propensity score` = pi_S_ksvm)
+
+# Add in study proportions
+pi_S_ksvm = left_join(pi_S_ksvm,study_proportions,by="Study")
+
+pi_S_ksvm_means = pi_S_ksvm %>%
+  group_by(Study) %>%
+  dplyr::summarise(mean_propensity=mean(`Propensity score`))
+
+# P(A|S=1,X)    
+fit_A_ksvm_rand = cbind.data.frame("A"=dataForTableOne6mo2[dataForTableOne6mo2$Study == "Randomized","Plan"],X_rand_matrix) %>%
+  ksvm(formula(.), data=.,type="C-svc",prob.model=T)
+pi_A_ksvm_rand = predict(fit_A_ksvm_rand, as.data.frame(X_rand_matrix), type="probabilities")#[,2]
+qsave(pi_A_ksvm_rand,"/Results/Generalizability_results/pi_A_ksvm_rand.qs")
+# pi_A_ksvm_rand = qread("/Results/Generalizability_results/pi_A_ksvm_rand.qs")
+
+# P(A|S=0,X)
+fit_A_ksvm_obs = cbind.data.frame("A"=dataForTableOne6mo2[dataForTableOne6mo2$Study == "Observational","Plan"],X_obs_matrix) %>% ksvm(formula(.), data=.,type="C-svc",prob.model=T)
+pi_A_ksvm_obs = predict(fit_A_ksvm_obs, as.data.frame(X_obs_matrix), type="probabilities")#[,2]
+qsave(pi_A_ksvm_obs,"/Results/Generalizability_results/pi_A_ksvm_obs.qs")
+# pi_A_ksvm_obs = qread("/Results/Generalizability_results/pi_A_ksvm_obs.qs")
+
+
+pi_A_ksvm = rbind.data.frame(cbind(recip_id = target_sample[target_sample$aa_sample==1,"recip_id"],
+                                   Study = "Randomized", pi_A_ksvm_rand),
+                        cbind(recip_id = target_sample[target_sample$aa_sample==0,"recip_id"],
+                              Study = "Observational", pi_A_ksvm_obs)) %>% 
+  gather(Plan, `Propensity score`, -c(Study,recip_id))
+pi_A_ksvm = pi_A_ksvm %>% mutate(Study = as.factor(Study),
+                       Plan = as.factor(Plan),
+                       `Propensity score` = as.numeric(`Propensity score`))
+
+# Add in plan proportions
+plan_proportions = dataForTableOne6mo2 %>% 
+  group_by(Plan, Study) %>% 
+  tally() %>%
+  ungroup() %>% 
+  group_by(Study) %>% 
+  mutate(`Plan proportion` = prop.table(n)) %>%      
+  select(-n) 
+
+pi_A_ksvm = left_join(pi_A_ksvm,plan_proportions,by=c("Plan", "Study"))
+    
+
+```
+
+# Figure 3b. Propensity for randomization from a KSVM model, density and mean
+```{r propensity_rand_figb}
+pi_S_ksvm %>% ggplot(aes(x=`Propensity score`, col=Study, linetype=Study)) + 
+  geom_density() + 
+  geom_vline(data=pi_S_ksvm_means, 
+             aes(xintercept=mean_propensity, col=Study, linetype=Study)) + # mean propensity scores
+  scale_fill_brewer() +
+  theme(legend.title=element_blank(), legend.position="bottom")
+
+
+```
+
+# Figure 4b. Propensity for health plan from a KSVM model and plan proportions
+```{r propensity_figb, fig.height=4, fig.width=8}
+pi_A_ksvm %>% ggplot(aes(x=`Propensity score`, col=Plan)) + 
+  geom_density() + 
+  geom_vline(aes(xintercept=`Plan proportion`, col=Plan, linetype=Plan)) + # plan proportions
+  facet_grid( ~ Study) + 
+  scale_fill_brewer() 
+
+```
+
+```{r propensity_fit_ensemble}
+# Data used for fit
+X_target = dataForTableOne6mo2[,-c(1:3)]
+
+# Fast ensemble library 
+SL.glmnet.alt = create.Learner("SL.glmnet", tune = list(alpha = 0.5)) # Default alpha = 1, nfolds = 10, nlambda = 100
+my_SL_library = c("SL.glm", SL.glmnet.alt$names, "SL.gam", "SL.nnet")
+
+## Fit propensity scores for S 
+fit_S_ensemble = SuperLearner(Y=as.numeric(S_target), X=X_target_matrix, family="binomial", SL.library=my_SL_library, verbose=F) #as.data.frame(X_target_matrix)
+pi_S_ensemble = predict(fit_S_ensemble, as.data.frame(X_target_matrix), onlySL = TRUE)$pred 
+qsave(pi_S_ensemble,"/Results/Generalizability_results/pi_S_ensemble.qs")
+
+# pi_S_ensemble = qread("/Results/Generalizability_results/pi_S_ensemble.qs")
+#     
+# pi_S_ensemble = cbind.data.frame("Study" = dataForTableOne6mo2$Study,
+#                         `Propensity score` = pi_S_ensemble)
+
+# Add in study proportions
+pi_S_ensemble = left_join(pi_S_ensemble,study_proportions,by="Study")
+
+pi_S_ensemble_means = pi_S_ensemble %>%
+  group_by(Study) %>%
+  dplyr::summarise(mean_propensity=mean(`Propensity score`))
+
+pi_S_ensemble_means
+
+# Data for propensity for A
+X_rand = dataForTableOne6mo2[dataForTableOne6mo2$Study=="Randomized",-c(1:3)]
+X_obs = dataForTableOne6mo2[dataForTableOne6mo2$Study=="Observational",-c(1:3)]
+A_rand = dataForTableOne6mo2[dataForTableOne6mo2$Study == "Randomized","Plan"]$Plan
+A_rand_all = model.matrix(~ A_rand,
+                            contrasts.arg=list(A_rand=contrasts(A_rand, contrasts=F)))[,-1] %>%
+  set_colnames(.,levels(A_rand))
+A_obs = dataForTableOne6mo2[dataForTableOne6mo2$Study == "Observational","Plan"]$Plan
+A_obs_all = model.matrix(~ A_obs,
+                            contrasts.arg=list(A_obs=contrasts(A_obs, contrasts=F)))[,-1] %>% set_colnames(.,levels(A_obs))
+levels_A = as.character(unique(A_rand)) %>% sort()
+
+## Remove spaces from variable names
+colnames(X_rand) = gsub(" ", "_", colnames(X_rand))
+colnames(X_rand) = gsub("-", "_", colnames(X_rand))
+colnames(X_rand_matrix) = gsub(" ", "_", colnames(X_rand_matrix))
+colnames(X_rand_matrix) = gsub("-", "_", colnames(X_rand_matrix))
+colnames(X_obs) = gsub(" ", "_", colnames(X_obs))
+colnames(X_obs) = gsub("-", "_", colnames(X_obs))
+colnames(X_obs_matrix) = gsub(" ", "_", colnames(X_obs_matrix))
+colnames(X_obs_matrix) = gsub("-", "_", colnames(X_obs_matrix))
+
+## Fit propensity scores for A
+# P(A|S=1,X)
+fit_A_ensemble_rand = apply(A_rand_all, 2,
+                       function(a) SuperLearner(Y=a, X=as.data.frame(X_rand_matrix), #Y=A,X=W
+                                                SL.library=my_SL_library,
+                                                family="binomial",method="method.NNLS",
+                                                verbose=F))
+pi_A_ensemble_rand_not_normalized = sapply(fit_A_ensemble_rand, function(a) predict(a, as.data.frame(X_rand_matrix), onlySL = TRUE)$pred)
+
+# Obtain normalized probabilities
+pi_A_ensemble_rand = pi_A_ensemble_rand_not_normalized/apply(pi_A_ensemble_rand_not_normalized,1,sum)
+
+# Save
+qsave(pi_A_ensemble_rand,"/Results/Generalizability_results/pi_A_ensemble_rand.qs")
+
+# pi_A_ensemble_rand = qread("/Results/Generalizability_results/pi_A_ensemble_rand.qs")
+
+# P(A|S=0,X)
+fit_A_ensemble_obs = apply(A_obs_all, 2,
+                       function(a) SuperLearner(Y=a, X=as.data.frame(X_obs_matrix), #Y=A,X=W
+                                                SL.library=my_SL_library,
+                                                family="binomial",method="method.NNLS",
+                                                verbose=F))
+pi_A_ensemble_obs_not_normalized = sapply(fit_A_ensemble_obs, function(a) predict(a, as.data.frame(X_obs_matrix), onlySL = TRUE)$pred)
+
+# Obtain normalized probabilities
+pi_A_ensemble_obs = pi_A_ensemble_obs_not_normalized/apply(pi_A_ensemble_obs_not_normalized,1,sum)
+
+# Save
+qsave(pi_A_ensemble_obs,"/Results/Generalizability_results/pi_A_ensemble_obs.qs")
+# pi_A_ensemble_obs = qread("/Results/Generalizability_results/pi_A_ensemble_obs.qs")
+
+
+pi_A_ensemble = rbind.data.frame(cbind(recip_id = target_sample[target_sample$aa_sample==1,"recip_id"],
+                                   Study = "Randomized", pi_A_ensemble_rand),
+                        cbind(recip_id = target_sample[target_sample$aa_sample==0,"recip_id"],
+                              Study = "Observational", pi_A_ensemble_obs)) %>%
+  gather(Plan, `Propensity score`, -c(Study,recip_id))
+pi_A_ensemble = pi_A_ensemble %>% mutate(Study = as.factor(Study),
+                       Plan = as.factor(Plan),
+                       `Propensity score` = as.numeric(`Propensity score`))
+
+# Add in plan proportions
+plan_proportions = dataForTableOne6mo2 %>%
+  group_by(Plan, Study) %>%
+  tally() %>%
+  ungroup() %>%
+  group_by(Study) %>%
+  mutate(`Plan proportion` = prop.table(n)) %>%
+  select(-n)
+
+pi_A_ensemble = left_join(pi_A_ensemble,plan_proportions,by=c("Plan", "Study"))
+    
+
+```
+
+# Figure 3c. Propensity for randomization from a ensemble model, density and mean
+*PAPER APPENDIX FIGURE 11* (figure:results_Medicaid_piS)
+```{r propensity_rand_figc}
+pi_S_ensemble %>% ggplot(aes(x=`Propensity score`, col=Study, linetype=Study)) + 
+  geom_density() + 
+  geom_vline(data=pi_S_ensemble_means, 
+             aes(xintercept=mean_propensity, col=Study, linetype=Study)) + # mean propensity scores
+  scale_fill_brewer() +
+  theme(legend.title=element_blank(), legend.position="bottom")
+
+
+```
+
+# Figure 4c. Propensity for health plan from a ensemble model and plan proportions
+```{r propensity_figc, fig.height=4, fig.width=8}
+pi_A_ensemble %>% ggplot(aes(x=`Propensity score`, col=Plan)) + 
+  geom_density() + 
+  geom_vline(aes(xintercept=`Plan proportion`, col=Plan, linetype=Plan)) + # plan proportions
+  facet_grid( ~ Study) + 
+  scale_fill_brewer() 
+
+```
+Exploring high propensity for plan scores
+```{r high_pi_A}
+# Add indicator for benes with near-1 propensities
+high_pi_A = pi_A_ksvm %>% filter(`Propensity score` > 0.99)
+nrow(high_pi_A)
+table(high_pi_A$Plan)
+
+dataForTableOne6mo2$high_pi_A = ifelse(target_sample$recip_id %in% high_pi_A$recip_id,1,0)
+
+# Create summary table using versions of covariates used to fit model
+table_high_pi_A = CreateTableOne(colnames(dataForTableOne6mo2), strata="high_pi_A",
+                                 data=dataForTableOne6mo2,
+               factorVars = factor_vars)
+# table_high_pi_A
+kableone(table_high_pi_A)
+```
+These high-propensity individuals in plans A and B had a mix of characteristics that distinguished them from remaining beneficiaries. 
+  
+The propensity to enroll in each health plan (as determined with a linear model) differs between randomized and observational subjects (Figure 3) and aligns with the proportion of patients in each health plan; the distribution is much tighter for randomized subjects.  
+
+Randomized and observational patients have overlapping distributions of propensity for randomization, as determined from a linear model (Figure 4). There are minimal practical positivity violations. Using ensembles, `r round(mean(pi_S_ensemble[pi_S_ensemble$Study == "Observational","Propensity score"]<0.025)*100,1)`% of observational and `r round(mean(pi_S_ensemble[pi_S_ensemble$Study == "Randomized","Propensity score"]<0.025)*100,1)`% of randomized subjects have propensity scores below 0.025. Using ksvms, `r round(mean(pi_S_ksvm[pi_S_ksvm$Study == "Observational","Propensity score"]<0.025)*100,1)`% of observational and `r round(mean(pi_S_ksvm[pi_S_ksvm$Study == "Randomized","Propensity score"]<0.025)*100,1)`% of randomized subjects have propensity scores below 0.025. Using linear models, `r round(mean(pi_S[pi_S$Study == "Observational","Propensity score"]<0.025)*100,1)`% of observational and `r round(mean(pi_S[pi_S$Study == "Randomized","Propensity score"]<0.025)*100,1)`% of randomized subjects have propensity scores below 0.025.  
+
+However, generalizing from randomized data relies in large extrapolation: the standardized mean difference in propensity scores for selection is `r round((mean(pi_S_ensemble[pi_S_ensemble$Study == "Randomized","Propensity score"]) - mean(pi_S_ensemble[pi_S_ensemble$Study == "Observational","Propensity score"]))/sd(pi_S_ensemble[,"Propensity score"]),2)` using ensembles, `r round((mean(pi_S_ksvm[pi_S_ksvm$Study == "Randomized","Propensity score"]) - mean(pi_S_ksvm[pi_S_ksvm$Study == "Observational","Propensity score"]))/sd(pi_S_ksvm[,"Propensity score"]),2)` using ksvms and `r round((mean(pi_S[pi_S$Study == "Randomized","Propensity score"]) - mean(pi_S[pi_S$Study == "Observational","Propensity score"]))/sd(pi_S[,"Propensity score"]),2)` using linear models.
+
+# Figure 5. Correlation plot  
+```{r corr_fig_a, fig.height=4, fig.width=8}
+par(mfrow=c(1,2), oma=c(0,0,3,1))
+cor_rand = cor(model.matrix(~.,dataForTableOne6mo2[dataForTableOne6mo2$Study %in% "Randomized",-1])[,-1])
+corrplot(cor_rand, tl.cex = 0.2, order = "FPC", diag=F, type="upper", method="color", main = "a. Randomized data", mar=c(0,0,1,0),col=colorRampPalette(c("blue","white","red"))(50))
+
+cor_obs = cor(model.matrix(~.,dataForTableOne6mo2[dataForTableOne6mo2$Study %in% "Observational",-1])[,-1])
+corrplot(cor_obs, tl.cex = 0.2, order = "FPC", diag=F, type="upper", method="color", main = "a. Observational data", mar=c(0,0,1,0),col=colorRampPalette(c("blue","white","red"))(50))
+
+max_cor <- max.col(`diag<-`(cor_rand,0))
+
+colnames(cor_rand)[max_cor]
+
+```
+
+# Table 3. Correlations in randomized data
+```{r corr_plot_rand, fig.height=4, fig.width=8}
+setDT(melt(cor_rand))[Var1 != Var2, .SD[which.max(value)], keyby=Var1] %>% arrange(desc(value))  %>%
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+# Table 4. Correlations in observational data
+```{r corr_plot_obs, fig.height=4, fig.width=8}
+setDT(melt(cor_obs))[Var1 != Var2, .SD[which.max(value)], keyby=Var1] %>% arrange(desc(value))  %>%
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+The strongest correlation with the outcome is with baseline spending decile, which has a correlation of 0.39 and 0.33 in the randomized and observational data, respectively. There is some multicollinearity between the aid group SSI_BD and being eligible for SSI (correlations of 0.93 and 0.87 in the randomized and observational data, respectively.
+
+# Figure 6. Estimates 95\% CI for effect modifiers across health plans in randomized data
+## Significant (p<0.05)
+```{r eff_mod_fit}
+# Data
+Y_rand = dataForTableOne6mo2[dataForTableOne6mo2$Study == "Randomized","log_spending_over_6_mo"]
+A_rand = dataForTableOne6mo2[dataForTableOne6mo2$Study == "Randomized","Plan"]
+X_rand = dataForTableOne6mo2[dataForTableOne6mo2$Study=="Randomized",-c(1:3)]
+X_rand_matrix = model.matrix(~.,X_rand)[,-1]
+
+Y_obs = dataForTableOne6mo2[dataForTableOne6mo2$Study == "Observational","log_spending_over_6_mo"]
+A_obs = dataForTableOne6mo2[dataForTableOne6mo2$Study == "Observational","Plan"]
+X_obs = dataForTableOne6mo2[dataForTableOne6mo2$Study=="Observational",-c(1:3)]
+X_obs_matrix = model.matrix(~.,X_obs)[,-1]
+
+# Fit regressions
+fit_rand = cbind.data.frame("Y"=Y_rand,"A"=A_rand,X_rand_matrix) %>%
+  set_colnames(c("Y","A",colnames(X_rand_matrix))) %>% 
+      lm(Y ~ . + .:A,data=.)
+
+fit_obs = cbind.data.frame("Y"=Y_obs,"A"=A_obs,X_obs_matrix) %>%
+  set_colnames(c("Y","A",colnames(X_obs_matrix))) %>% 
+      lm(Y ~ . + .:A,data=.)
+```
+
+```{r eff_mod_rand_summarize_sig, fig.height=12, fig.width=10}
+# Extract summary of interaction terms
+range_interact_rand = (1+length(unique(A_rand))+ncol(X_rand_matrix)):length(fit_rand$coefficients)
+
+coef_interact_table_rand = cbind.data.frame("Estimate" = fit_rand$coefficients[range_interact_rand],
+                                       confint(fit_rand)[range_interact_rand,])
+# Clean for plotting
+coef_interact_table_rand = coef_interact_table_rand %>% 
+  mutate(Name = rownames(coef_interact_table_rand),
+         Name = reorder(Name, abs(Estimate), FUN = mean),
+         Plan = substring(Name,2,2),
+         Coefficient = substring(Name,4),
+         Category = case_when(grepl("Age", Name) ~ "Age",
+                              grepl("Sex", Name) ~ "Sex",
+                              #grepl("Race", Name) ~ "Race",
+                              grepl("Neighborhood", Name) ~ "Neighborhood",
+                              grepl("Aid_group", Name) ~ "Aid group",
+                              grepl("Eligible_for_SSI", Name) ~ "SSI",
+                              grepl("Baseline_spending_decile", Name) ~ "Baseline spending",
+                              grepl("Missing_baseline_spending ", Name) ~ "Baseline spending",
+                              grepl("Percent_neighborhood_poverty", Name) ~ "Neighborhood poverty",
+                              TRUE ~ "Plan")) 
+
+# Add p-values
+p_values_rand = data.frame("p_value" = summary(fit_rand)$coef[,4])
+p_values_rand$Name = rownames(p_values_rand)
+
+coef_interact_table_rand = left_join(coef_interact_table_rand, p_values_rand, by = "Name")
+coef_interact_table_rand[is.na(coef_interact_table_rand$p_value), "p_value"] <- 1
+
+
+# Plot
+coef_interact_table_rand %>% filter(p_value<0.05 & Plan %in% levels(A_rand$Plan)) %>% 
+  mutate(Coefficient = reorder(Coefficient, abs(Estimate), FUN = mean),
+         Category = reorder(Category, -abs(Estimate), FUN = min)) %>% 
+  ggplot(aes(x=Estimate, y=Coefficient, color=Category)) + 
+    geom_vline(aes(xintercept = 0), size = .25, linetype = "dashed") +# zero line
+    geom_errorbarh(aes(xmax = `97.5 %`, xmin = `2.5 %`), size = .5, height = 
+                     .2, color = "gray50") + geom_point(size = 1.5) +
+    theme_bw() + theme(text = element_text(size=8))+ 
+    facet_wrap(~ factor(Plan)) +
+    ylab("") +
+    xlab("Change in 6 month log spending") #+ theme(legend.position="none") 
+
+# Largest interaction terms with p-values < 0.05
+coef_interact_table_rand %>% filter(p_value<0.05) %>% arrange(Estimate,decreasing = T) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+
+```
+
+## All
+```{r eff_mod_rand_summarize, fig.height=15, fig.width=12}
+coef_interact_table_rand %>% filter(Plan %in% levels(A_rand$Plan)) %>%  
+  mutate(Coefficient = reorder(Coefficient, abs(Estimate), FUN = mean),
+         Category = reorder(Category, -abs(Estimate), FUN = min)) %>% 
+  ggplot(aes(x=Estimate, y=Coefficient, color=Category)) + 
+    geom_vline(aes(xintercept = 0), size = .25, linetype = "dashed") +# zero line
+    geom_errorbarh(aes(xmax = `97.5 %`, xmin = `2.5 %`), size = .5, height = 
+                     .2, color = "gray50") + geom_point(size = 1.5) +
+    theme_bw() + theme(text = element_text(size=8))+ 
+    facet_wrap(~ factor(Plan)) +
+    ylab("") +
+    xlab("Change in 6 month log spending") 
+
+```
+
+# Figure 7. Estimates and 95\% CI for effect modifiers across health plans in observational data
+## Significant (p<0.05)
+```{r eff_mod_obs_summarize_sig, fig.height=12, fig.width=10}
+# Extract summary of interaction terms
+range_interact_obs = (1+length(unique(A_obs))+ncol(X_obs_matrix)):length(fit_obs$coefficients)
+
+coef_interact_table_obs = cbind.data.frame("Estimate" = fit_obs$coefficients[range_interact_obs],
+                                       confint(fit_obs)[range_interact_obs,])
+# Clean for plotting
+coef_interact_table_obs = coef_interact_table_obs %>% 
+  mutate(Name = rownames(coef_interact_table_obs),
+         Name = reorder(Name, abs(Estimate), FUN = mean),
+         Plan = substring(Name,2,2),
+         Coefficient = substring(Name,4),
+         Category = case_when(grepl("Age", Name) ~ "Age",
+                              grepl("Sex", Name) ~ "Sex",
+                              #grepl("Race", Name) ~ "Race",
+                              grepl("Neighborhood", Name) ~ "Neighborhood",
+                              grepl("Aid_group", Name) ~ "Aid group",
+                              grepl("Eligible_for_SSI", Name) ~ "SSI",
+                              grepl("Baseline_spending_decile", Name) ~ "Baseline spending",
+                              grepl("Missing_baseline_spending ", Name) ~ "Baseline spending",
+                              grepl("Percent_neighborhood_poverty", Name) ~ "Neighborhood poverty",
+                              TRUE ~ "Plan")) 
+
+# Add p-values
+p_values_obs = data.frame("p_value" = summary(fit_obs)$coef[,4])
+p_values_obs$Name = rownames(p_values_obs)
+
+coef_interact_table_obs = left_join(coef_interact_table_obs, p_values_obs, by = "Name")
+coef_interact_table_obs[is.na(coef_interact_table_obs$p_value), "p_value"] <- 1
+
+
+# Plot
+coef_interact_table_obs %>% filter(p_value<0.05 & Plan %in% levels(A_obs$Plan)) %>% 
+  mutate(Coefficient = reorder(Coefficient, abs(Estimate), FUN = mean),
+         Category = reorder(Category, -abs(Estimate), FUN = min)) %>% 
+  ggplot(aes(x=Estimate, y=Coefficient, color=Category)) + 
+    geom_vline(aes(xintercept = 0), size = .25, linetype = "dashed") +# zero line
+    geom_errorbarh(aes(xmax = `97.5 %`, xmin = `2.5 %`), size = .5, height = 
+                     .2, color = "gray50") + geom_point(size = 1.5) +
+    theme_bw() + theme(text = element_text(size=8))+ 
+    facet_wrap(~ factor(Plan)) +
+    ylab("") +
+    xlab("Change in 6 month log spending") #+ theme(legend.position="none") 
+
+# Largest interaction terms with p-values < 0.05
+coef_interact_table_obs %>% filter(p_value<0.05) %>% arrange(Estimate,decreasing = T) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  kable() %>% kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+
+
+```
+
+## All
+```{r eff_mod_obs_summarize, fig.height=15, fig.width=12}
+coef_interact_table_obs %>% filter(Plan %in% levels(A_obs$Plan)) %>% 
+  mutate(Coefficient = reorder(Coefficient, abs(Estimate), FUN = mean),
+         Category = reorder(Category, -abs(Estimate), FUN = min)) %>% 
+  ggplot(aes(x=Estimate, y=Coefficient, color=Category)) + 
+    geom_vline(aes(xintercept = 0), size = .25, linetype = "dashed") +# zero line
+    geom_errorbarh(aes(xmax = `97.5 %`, xmin = `2.5 %`), size = .5, height = 
+                     .2, color = "gray50") + geom_point(size = 1.5) +
+    theme_bw() + theme(text = element_text(size=8))+ 
+    facet_wrap(~ factor(Plan)) +
+    ylab("") +
+    xlab("Change in 6 month log spending") #+ theme(legend.position="none") 
+
+```

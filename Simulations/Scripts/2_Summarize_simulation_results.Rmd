@@ -1,0 +1,308 @@
+---
+title: "Novel estimator simulation methods: simple data generating mechanism"
+author: ""
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: sandstone
+    toc: true
+    number_sections: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, warning = FALSE)
+```
+
+# **Simulation setup and aims**
+## Aims
+
+See the "TMLE based idea for estimator" document for a detailed description of the motivating setting, novel estimator and comparison methods. Code notation follows notation in the "TMLE based idea for estimator" document. 
+
+With this simulation, we aim to evaluate the finite sample performance of our novel estimators compared to existing/simpler approaches. Particularly, we want to assess performance in the presence of (1) unmeasured confounding in the observational data, (2) positivity of selection violations, (3) complex outcome models. The first two will be the primary aims of the simulation. We also want to assess sensitivity to (4) identifiability assumption violations.
+
+## Data generating mechanisms
+### Base case
+**Properties**  
+In the base case data generating model, we ensure that identifiability assumptions hold for base-case analysis, namely:  
+
+-  The randomized group has no unmeasured confounding  
+-  The distribution of $U$ is the same in $\mathcal{R}_\text{obs, overlap}$ as $\mathcal{R}_\text{obs, no}$
+-  All study/treatment groups have a positive probability of receiving each treatment  
+-  The same outcome model holds for both randomized and observational data  
+-  No unmeasured covariates that confound the relationship between outcome and study selection  
+-  $\mathcal{R}_\text{overlap}$ is not a null set  
+
+We will investigate the impacts of violations to these assumption on our methods' performance.  
+
+To account for the full potential complexity in the data and highlight the relative shortcomings of the different methods, the data generating mechanism has the following features:  
+  
+-  It includes $\mathcal{R}_\text{RCT, no}$, $\mathcal{R}_\text{obs, no}$, and $\mathcal{R}_\text{overlap}$ regions  
+-  The conditional outcome relationship in $\mathcal{R}_\text{overlap}$ in the randomized data does not fully extrapolate well to $\mathcal{R}_\text{obs, no}$ (which requires data generating functions that are more complex than simple linear models)   
+-  Observed covariates differ in distribution across randomized and observational data    
+-  Sample sizes reflect ratios of $n_\text{RCT}:n_{obs}$ that may be observed in health policy data: $n=n_\text{RCT}+n_{obs}=2,000+8,000=10,000$ (approximate numbers for each category)  
+
+**Data generating mechanism**  
+We generated simulated data using the following conditional distributions for $P(Y,S,A,X,U) = P(X)P(U|X)P(S|X,U)P(A|S,X,U)P(Y|S,A,X,U)$: 
+$$\begin{align*}
+X_1,...,X_4 &\sim N(0,1) \\
+U &\sim binom(0.5) \\
+S &\begin{cases}
+    1,& \text{if } X_1 > qnorm(0.9)\\
+    0,& \text{if } X_1 < qnorm(0.5)\\
+    binom(0.5),& \text{otherwise}
+\end{cases} \\
+A|S=1,X,U &\sim binom(0.6) \\
+A|S=0,X,U &\sim binom(expit(-0.8+0.125X_1+0.1X_2+0.075X_3+0.05X_4+0.1(X_1+1)^3+0.625U)) \\
+Y|S,A,X,U &\sim N(\mu_Y,1), \text{ where } \mu_Y=-1.5-3A+4X_1+4X_2+3X_3+2X_4+0.4(X_1+1)^3+4AX_1+10U
+\end{align*}$$
+
+### Alternative data generating mechanisms
+The above data-generating process describes a data generating mechanism with positivity of selection violation, unmeasured confounding, and complex models defining conditional probabilities. To assess sensitivity to assumption violations and to other parameters/model specifications, we will also examine the following data generating mechanisms:  
+
+-  Alternative complex data generating mechanisms: $Y$ will be generated from alternative regressions, including more complex effect heterogeneity, knot terms, and an interaction between the unmeasured confounder and a measured covariate  
+-  Different strengths of unmeasured confounding: including $U$ in the measured covariates for no unmeasured confounding and varying the coefficients in the $P(Y|S,X,U)$ and $P(A|S,X,U)$ models 
+-  Simple linear data generating mechanisms: all conditional distributions (for $Y$, $S$, and $A$) will be generated using simple linear models excluding $X_1^3$ terms   
+-  Different levels of positivity of selection violation and sizes of the set $\mathcal{R}_\text{overlap}$: change $P(S|X,U)$ for more propensity score non-overlap, particularly varying covariates that are strongly correlated with the outcome or responsible for treatment effect heterogeneity (differ in magnitude between $E(Y|S,A,X)$ regressions)    
+-  Model misspecification: fitting linear models, with squared terms, with cubed terms (correct model specification), and a non-parametric machine learning approach  
+-  Violation of the constant bias assumption: bias will increase/decrease in a way that's not predictable from the trends observed in the overlap region
+-  The distribution of $U$ in $\mathcal{R}_\text{obs, overlap}$ vs. $\mathcal{R}_\text{obs, no}$ differ to varying degrees: generating $U$ to be a function of covariates correlated with being in the overlap region  
+-  Existance of an unmeasured confounder of the outcome-study selection relationship:  change $P(S|X,U)$ to depend on $U$  
+-  Different ratios of $n_\text{RCT}$ to $n_\text{obs}$. The base-case ratio is 1:4. We will also examine 1:1 and 1:30 (the latter being the observed ratio in the data)   
+-  Different sizes of $n$, the target population sample size. The base-case used $n=10,000$. We will also examine $2,000$ and $50,000$  
+-  Different overlap region specifications. We assessed correctly specified overlap as well as 4 specifications of the hyperparameters $a$ and $b$ for overlap region estimation.  
+
+Working off the base case (complex data generating mechanism with unmeasured confounding and positivity of selection violation; ksvm model fits with the true overlap determination used), we assessed the following settings: 4 model fit specifications (linear, squared, cubed which is correctly specified, machine learning algorithm), 4 unmeasured confounding settings (absence, less, default, more), 2 data generating model complexity settings (linear/complex), 3 positivity of selection violation/$\mathcal{R}_\text{overlap}$ settings, 2 degrees of constant bias violations (none, violation), 2 relationships between $U$ and $R_\text{overlap}$ (none, correlated), 2 exchangeability of sample selection violations (not violated, violated), 3 ratios of $n_\text{RCT}$ to $n_\text{obs}$, 3 target sample sizes (n), and 5 overlap region determination settings (correctly specified and 4 estimated settings). We also examined 4 alternative complex data generating mechanisms (complex effect heterogeneity, knot, more severe knot, knot inside overlap region, $U*X_1$ interaction). In total, we examined 41 different data generating scenario by model fit combinations. Across those combinations, we applied the 7 estimators detailed in the Methods section below.   
+
+
+## Estimands
+Our causal estimands of interest are target population treatment-specific means (PTSM): $E(Y^{a}) \text{ for } a \in \mathcal{A}$. Here, for simplicity, we test with $a \in \{1,2\}$. We will also estimate population average treatment effects, which are more commonly of interest in causal inference settings: $E(Y^{a})-E(Y^{a'})$, arbitrarily picking two of the plans for comparison. 
+
+## Methods
+We will compare performance of the following novel methods:  
+
+(1)  Cross-design synthesis (CDS): uses the overlap region to de-bias observational data estimates  
+(2)  2-stage CCDS: estimates the bias term through a 2-stage regression for added stability of estimates and to avoid issues from marginalizing over a distribution of unmeasured confounding in the region of overlap that may not align with the distribution in the overall observational data  
+(3)  Eventually: CCDS targeted maximum likelihood estimation (TMLE): estimates the CCDS functionals using the double-robust TMLE approach  
+
+I will compare against the following estimators:  
+
+(4)  "rand": linear outcome regression created using randomized data and used to extrapolate to the entire target population.   This extrapolation relies heavily on modeling assumptions and may yield bias when the relationship between covariates and potential outcomes differs in the region of overlap compared to the full region of observational data support.  
+
+(5)  "rand/obs": outcome regression created using randomized data is used to estimate counterfactuals for the randomized data; outcome regression created using observational data is used to estimate counterfactuals for the observational data. This approach assumes there is no unmeasured confounding in the observational data.  
+(6)  "2-stage WD": our extension of the Kallus et al. 2018 estimator is similar to the 2-stage CCDS approach except that all randomized data is used to estimate the bias term rather than just data in the overlap region. The original Kallus et al. estimator targeted the target population conditional average treatment effect (PCATE) and used an inverse probability weighting (IPW)-like approach to estimate the true treatment effect in the randomized data; to accomodate the PTSM as the estimand of interest, I replaced the IPW approach with an outcome regression. The original estimator also targeted a population represented by the observational data, so this comparator method is an adaption that also uses randomized data counterfactual estimates from the randomized data regression. In not focusing on the region of overlap, for our setting, this approach extrapolates the randomized outcome model to a region of non-support; however, in doing so, it marginalizes the observational regression model over the distribution of unmeasured confounders that we care about - that in the overall observational data covariate support. This highlights the trade-off between our assumption 1b, which relies on the unmeasured confounding distribution being the same in the region of overlap as otherwise vs. extrapolating the randomized outcome regression to a region of non-support.  
+
+
+For determining regions of overlap and non-overlap, we applied the approach developed by Nethery et al. 2019 to the propensity score for selection on the logit scale (to account for the high proportion of propensity scores close to zero, where a smaller distance between observations' propensities is needed for overlap). Code for Nethery et al.'s approach is available from https://github.com/rachelnethery/overlap.
+
+Bootstrap was used for variance estimation for all methods (to be done).  
+
+These comparator estimators can be fit using both linear outcome regressions as well as more complex machine learning approaches. To compare apples to apples, I will adapt machine learning regressions for all estimators when assessing such approaches, although most comparison methods were developed using linear regressions (beyond Kallus et al., who used a causal forest approach).  
+
+The Data Generating Mechanisms section describes the simulation settings we will use to highlight the strengths and weaknesses of the various estimators and to investigate their performance under the identifiability assumption violations. 
+
+
+## Performance measures
+We will evaluate bias, root mean squared error (RMSE), empirical and bootstrap standard errors, confidence interval (CI) width, and coverage. Bias is our primary measure of interest.
+
+We will use 2000 replications as that ensures a Monte-Carlo standard error (SE) for bias estimates $\le 0.05$ based on assuming that SE$(\hat{Y}^a) \le 2$.
+$$n=(\frac{\text{SE}(\hat{Y}^a)}{\text{SE(bias)}_\text{Monte Carlo})^2}=(\frac{2}{0.05})^2=1600$$ (and keeps Monte-Carlo SE for other metrics within acceptable limits; e.g., for coverage estimates, less than $1\%$: $\text{SE(covarage)}_\text{Monte Carlo}=\sqrt{\frac{0.8*0.2}{2000}}=0.009$ or at the worst, 50% coverage, 1.1%).  
+
+The following sections walk through the different data generating scenarios and modeling options. The subsections focus on "Data summary" - summarizing the data resulting from the data generating process, "Results" - presenting simulation results, and "Closer look" - taking a closer look at one run of a simulation.   
+
+
+
+# **Base case: complex data generating mechanism** <!--{.tabset .tabset-pills}-->
+## Data summary
+The complex data generating mechanism included a cubed term, $X_1^3$, in the model to generate A and Y. The resulting potential outcome means and crude observed values (means for each treatment group) are as follows:
+```{r load_libraries, output=F, message=FALSE}
+### Load libraries
+rm(list=ls())  
+# start.time1 <- proc.time() 
+path = getwd()   
+ 
+library(tidyverse) # for data manipulation
+library(nnet) # for nnet object output (multinomial regression fits)
+library(glmnet) # for lasso regression output 
+library(Hmisc) # for efficiently sampling from multinomial distribution
+library(parallel) # for parallel processing  
+library(SuperLearner) # for ensembling
+ 
+library(knitr) # pretty tables
+library(kableExtra) # prettier tables 
+library(ggthemes) # pretty colors for ggplots 
+library(gridExtra) # for arranging ggplots 
+library(magrittr) # for data manipulation (set_colnames)  
+library(fst) # for storing large data frames/tables
+library(qs) # for storing large data
+library(mefa4) # for %notin% function  
+library(kernlab) # for ksvm modeling  
+
+source('../Helper_files/pw_overlap.R') # for determining regions of overlap and non-overlap, from Nethery et al. 2019: https://github.com/rachelnethery/overlap
+source('../Helper_files/sim_functions.R') # for fitting models and simulating data    
+source('../Helper_files/Lu2019_estimators.R') # for fitting models and simulating data    
+     
+# Hyperparameters  
+m = 1000 # number of replications  
+my_N=1000000 # target population size
+my_n_target = 10000 # target sample size 
+p_A_S1 = c(0.4,0.6) # P(A=1|S=1),P(A=2|S=1)
+my_beta_AU = 0.625 # strength of relationship between U and A 
+my_beta_YU = c(10,0) # strength of relationship between U and Y: main effect and interaction with X1
+my_beta_AX_linear = c(0.125,0.1,0.075,0.05) # coefficients for relationship between X and A
+my_beta_AX = c(my_beta_AX_linear,0.1) # coefficients for relationship between X and A
+my_beta_YX_linear = c(0.2,4,3,2) # coefficients for relationship between X and Y
+my_beta_YX = c(my_beta_YX_linear,1) # coefficients for relationship between X and Y
+my_beta_YAX_linear = c(2) # coefficient for interaction between X and A in Y regression: X1*A, (X1-0.5)^3*A
+my_beta_YAX = c(my_beta_YAX_linear,0) # coefficient for interaction between X and A in Y regression: X1*A, 
+random_seed=123 # random seed
+no_cores = detectCores()-2 # number of cores to use for simulations
+n_estimators = 12 # number of estimators being compared, including oracle
+ 
+# Set ggplot theme 
+theme_set(theme_bw()) 
+
+### Create library of algorithms
+# SL.glmnet.alt = create.Learner("SL.glmnet", tune = list(alpha = 0.5)) # Default alpha = 1, nfolds = 10, nlambda = 100
+# SL.ranger.alt = create.Learner("SL.ranger", tune = list(num.trees = 300, min.node.size=floor(my_n_target*0.05)), name_prefix = "SL.ranger_trees") # Default num.trees = 100, mtry = floor(sqrt(ncol(X))), min.node.size = ifelse(family$family == "gaussian", 5, 1)
+# #SL.svm.alt = create.Learner("SL.svm", tune = list(nu = 0.2, epsilon = 0.1)) # Defaults: nu = 0.5
+# SL.nnet.alt = create.Learner("SL.nnet", tune = list(size = 2)) # Defaults: size = 2
+# 
+# my_SL_library = c("SL.glm", SL.glmnet.alt$names,
+#                SL.ranger.alt$names, #SL.svm.alt$names,
+#                SL.nnet.alt$names,
+#                "SL.earth", "SL.gam", "SL.kernelKnn") 
+# # Schmidt 2020: "SL.glm", "SL.glm.interaction", "SL.gam", "SL.nnet", "SL.rpart"
+
+my_SL_library = c("SL.glm", "SL.glm.interaction","SL.earth", "SL.nnet") # fast version
+file_suffix = "_fast"
+   
+```
+
+```{r gen_data_complex} 
+# Read in each object from sim_complex
+sim_data_complex = qread("/Results & output/Simulations/sim_data_complex.qs")
+p_S_adj_complex = qread("/Results & output/Simulations/p_S_adj_complex.qs")
+p_A_complex = qread("/Results & output/Simulations/p_A_complex.qs")
+ave_bias_complex = qread("/Results & output/Simulations/sim_complex_ave_bias.qs")
+
+# Remove X1_cube term to fit linear models in simulation
+sim_data_complex_noX1cube = subset(sim_data_complex,select=c(-X1_cube)) 
+
+# Add X1_sq term to fit misspecified models in simulation
+sim_data_complex_X1sq = sim_data_complex_noX1cube %>% mutate(X1_sq = X1^2) 
+
+# Summarize biases
+ave_bias_complex %>% round(2)
+```
+The sample treatment-specific means (STSMs) in the randomized sample display external validity bias. The observational data also displays external validity bias and also displays internal validity bias due to measured and unmeasured confounding. Plotted covariate distributions of U and Y are from one target sample. 
+
+Check propensity scores for treatment: no positivity of treatment violations    
+*PAPER APPENDIX FIGURE 2A* (first panel of figure:propensity_scores)  
+![](/Results & output/Simulations/sim_complex_plot_p_A.png){width=50%}
+
+Check outcomes: heterogeneity of treatment effect exists (Y is variable)  
+![](/Results & output/Simulations/sim_complex_plot_Y.png){width=50%}  
+&nbsp; 
+3rd plot: *PAPER APPENDIX FIGURE 2B* (second panel of figure:propensity_scores)  
+2nd table: *PAPER APPENDIX TABLE 1* (table:potential_outcomes)  
+```{r summarize_sim_complex, message=FALSE, warning=FALSE} 
+#####################################################################################################
+# Summarize simulated data  
+data_summary_complex = summarize_sim_data(sim_data = sim_data_complex, # simulated data 
+                                         p_S_pop = p_S_adj_complex, # propensity scores for selection
+                                         p_A_pop = p_A_complex, # propensity scores for treatment
+                                         n_target = my_n_target, # target sample size
+                                         beta_YU = my_beta_YU, # strength of relationship between U and Y: main effect and interaction with X1
+                                         beta_AX = my_beta_AX, # coefficients for relationship between X and A
+                                         beta_YX = my_beta_YX, # coefficients for relationship between X and Y
+                                         beta_YAX = my_beta_YAX, # coefficient for interaction between X and A in Y regression
+                                         my_seed = random_seed) # random seed
+
+# Summarize data
+data_summary_complex$table_n # Population and sample sizes
+data_summary_complex$table_outcomes %>% round(2) # Mean potential and observed outcomes
+print("Mean Y")
+data_summary_complex$mean_Y_pop %>% round(2) # Mean outcome in target population
+data_summary_complex$table_overlap %>% round(3) # Overlap region summary
+
+# Propensity score for selection plots 
+data_summary_complex$plots$plot_propensity_S_population
+#data_summary_complex$plots$plot_propensity_S_sample
+data_summary_complex$plots$plot_log_propensity_S_sample_zoom
+
+# Plots of overlap regions
+data_summary_complex$plots$plot_propensity_S_sample_overlap + theme(legend.position = "bottom", title = element_blank())
+data_summary_complex$plots$plot_log_propensity_S_sample_overlap
+#data_summary_complex$plots$plot_propensity_S_sample_overlap2
+data_summary_complex$plots$plot_propensity_S_sample_overlap_zoom
+
+# Plots of U and Y
+data_summary_complex$plots$plot_dist_U_by_group
+data_summary_complex$plots$plot_dist_U_S0_by_overlap
+data_summary_complex$plots$plot_dist_Y_by_group
+
+# Plots of CATE estimates using rand and obs data vs truth
+data_summary_complex$plots$plot_CATE_Y1
+data_summary_complex$plots$plot_CATE_Y2
+
+# Plots of bias in CCDS estimates vs. X1
+data_summary_complex$plots$plot_bias_rand_Y1
+data_summary_complex$plots$plot_bias_obs_Y1
+data_summary_complex$plots$plot_bias_rand_Y2
+data_summary_complex$plots$plot_bias_obs_Y2
+```
+
+# **Overlap region specification**  
+*PAPER APPENDIX TABLE 2* (table:results_overlap_region)  
+The base case describes results using correctly specified overlap and a default of $\alpha=1\%*range(logit(P(S|X)))$ and $\beta=1\%*min(n_\text{obs},n_\text{rand})$. I also assessed the following 3 specifications of the hyperparameters $\alpha$ and $\beta$:
+$$
+\begin{align*}
+  \alpha &= 1\%*range(P(S|X)) &\beta = 1\%*min(n_\text{obs},n_\text{rand}) \\
+  \alpha &= 2\%*range(P(S|X)) &\beta = 1\%*min(n_\text{obs},n_\text{rand}) \\
+  \alpha &= 1\%*range(logit(P(S|X))) &\beta = 1\%*min(n_\text{obs},n_\text{rand}) \\
+  \alpha &= 2\%*range(logit(P(S|X))) &\beta = 1\%*min(n_\text{obs},n_\text{rand}) \\
+  \alpha &= 10\%*range(logit(P(S|X))) &\beta = 4\%*min(n_\text{obs},n_\text{rand}) \\
+  
+\end{align*}
+$$
+
+
+
+## Results: nominal scale, ensemble
+```{r run_sim_overlap1_ensemble, fig.height=3, fig.width=7, results="asis"}
+sim_results_overlap1_ensemble = readRDS(paste0("C:/Users/irina/Dropbox/Research - dissertation/Paper 2 - Medicaid work/Results & output/Simulations/sim_results_overlap1_ensemble",file_suffix,".rds"))
+
+summarize_simulation_results(sim_results_overlap1_ensemble, sim_data = sim_data_complex_noX1cube, ensemble = T)
+  
+```
+
+## Results: nominal scale, larger $\alpha$, ensemble
+```{r run_sim_overlap2_ensemble, fig.height=3, fig.width=7, results="asis"}
+sim_results_overlap2_ensemble = readRDS(paste0("C:/Users/irina/Dropbox/Research - dissertation/Paper 2 - Medicaid work/Results & output/Simulations/sim_results_overlap2_ensemble",file_suffix,".rds"))
+
+summarize_simulation_results(sim_results_overlap2_ensemble, sim_data = sim_data_complex_noX1cube, ensemble = T)
+  
+```
+
+## Results: larger $\alpha$ and $\beta$, ensemble
+```{r run_sim_overlap3_ensemble, fig.height=3, fig.width=7, results="asis"}
+sim_results_overlap3_ensemble = readRDS(paste0("C:/Users/irina/Dropbox/Research - dissertation/Paper 2 - Medicaid work/Results & output/Simulations/sim_results_overlap3_ensemble",file_suffix,".rds"))
+
+summarize_simulation_results(sim_results_overlap3_ensemble, sim_data = sim_data_complex_noX1cube, ensemble = T)
+  
+```
+
+## Results: larger $\alpha$, ensemble
+```{r run_sim_overlap4_ensemble, fig.height=3, fig.width=7, results="asis"}
+sim_results_overlap4_ensemble = readRDS(paste0("C:/Users/irina/Dropbox/Research - dissertation/Paper 2 - Medicaid work/Results & output/Simulations/sim_results_overlap4_ensemble",file_suffix,".rds"))
+
+summarize_simulation_results(sim_results_overlap4_ensemble, sim_data = sim_data_complex_noX1cube, ensemble = T)
+  
+```
+
+
