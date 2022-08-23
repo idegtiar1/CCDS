@@ -9,13 +9,13 @@ The R function “get_estimates_with_bootstrap” in the Real_data/Helper_files/
 The code contains all functions that were used to generate simulation results (found in Section 5 and Supplemental Materials) and Medicaid study results (found in Section 6 and Supplemental Materials). All tables and figures for the paper’s simulation results can be reproduced by running the provided code; for the real data analysis, all code to reproduce tables & figures is provided but the necessary data cannot be provided due to the data use agreement with the Centers for Medicare and Medicaid Services.
 
 To reproduce results, run the scripts in the “Scripts” folder in numerical order:
--	Simulations/Scripts
+- Simulations/Scripts
   *	0_Generate_data.R (was run locally)
   *	1a_Run_simulations.R (was run on server)
   *	1b_Run_simulations_full_ensemble.R (was run on server)
   *	2_Summarize_simulation_results.Rmd (was run locally)
   *	3_Generate_plots_for_presentation.Rmd (was run locally)
--	Real_data/Scripts (requires data so cannot be run)
+- Real_data/Scripts (requires data so cannot be run)
   *	1_Data_cleaning.R
   *	2_EDA.Rmd
   *	3_Estimates.R
