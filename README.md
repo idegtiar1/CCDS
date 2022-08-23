@@ -34,8 +34,8 @@ While there are no hardware nor operating system requirements per se (besides th
 
 Simulations were run using R version 3.5.1 (2018-07-02). The following R packages versions were used:
 
-|   |   |   |   |
-|---|---|---|---|
+|   |   |   |   |   |
+|---|---|---|---|---|
 | kernlab_0.9-27     |  ranger_0.10.1      |  qs_0.21.2          |  fst_0.9.4          |  magrittr_2.0.1     
 | gridExtra_2.3      |  ggthemes_4.2.0     |  kableExtra_0.9.0   |  knitr_1.31         |  SuperLearner_2.0-24
 | nnls_1.4           |  Hmisc_4.1-1        |  Formula_1.2-4      |  survival_2.42-3    |  lattice_0.20-35    
@@ -45,12 +45,14 @@ Simulations were run using R version 3.5.1 (2018-07-02). The following R package
 
 Simulated data generation and results summaries were run using R version 4.0.2 (2020-06-22). The following R package versions were used:
 
-kernlab_0.9-29      mefa4_0.3-7         qs_0.24.1           fst_0.9.4          
-magrittr_2.0.1      gridExtra_2.3       ggthemes_4.2.4      kableExtra_1.3.4   
-knitr_1.31          SuperLearner_2.0-26 nnls_1.4            Hmisc_4.5-0        
-Formula_1.2-4       survival_3.1-12     lattice_0.20-41     glmnet_4.1-1       
-Matrix_1.2-18       nnet_7.3-14         forcats_0.5.1       stringr_1.4.0      
-dplyr_1.0.5         purrr_0.3.4         readr_1.4.0         tidyr_1.1.3        
-tibble_3.1.0        ggplot2_3.3.3       tidyverse_1.3.0
+|   |   |   |   |
+|---|---|---|---|
+| kernlab_0.9-29     |  mefa4_0.3-7         |  qs_0.24.1          |  fst_0.9.4          
+| magrittr_2.0.1     |  gridExtra_2.3       |  ggthemes_4.2.4     |  kableExtra_1.3.4   
+| knitr_1.31         |  SuperLearner_2.0-26 |  nnls_1.4           |  Hmisc_4.5-0        
+| Formula_1.2-4      |  survival_3.1-12     |  lattice_0.20-41    |  glmnet_4.1-1       
+| Matrix_1.2-18      |  nnet_7.3-14         |  forcats_0.5.1      |  stringr_1.4.0      
+| dplyr_1.0.5        |  purrr_0.3.4         |  readr_1.4.0        |  tidyr_1.1.3        
+| tibble_3.1.0       |  ggplot2_3.3.3       |  tidyverse_1.3.0    | 
 
 The code also used the pw_overlap function available from https://github.com/rachelnethery/overlap (commit reference c54975a).
