@@ -34,12 +34,14 @@ While there are no hardware nor operating system requirements per se (besides th
 
 Simulations were run using R version 3.5.1 (2018-07-02). The following R packages versions were used:
 
+|   |   |   |   |
+|---|---|---|---|
 | kernlab_0.9-27     |  ranger_0.10.1      |  qs_0.21.2          |  fst_0.9.4          |  magrittr_2.0.1     
 | gridExtra_2.3      |  ggthemes_4.2.0     |  kableExtra_0.9.0   |  knitr_1.31         |  SuperLearner_2.0-24
 | nnls_1.4           |  Hmisc_4.1-1        |  Formula_1.2-4      |  survival_2.42-3    |  lattice_0.20-35    
 | glmnet_2.0-16      |  foreach_1.5.1      |  Matrix_1.2-14      |  nnet_7.3-12        |  forcats_0.5.1      
 | stringr_1.4.0      |  dplyr_1.0.4        |  purrr_0.3.4        |  readr_1.4.0        |  tidyr_1.1.2        
-| tibble_3.0.6       |  ggplot2_3.3.3      |  tidyverse_1.3.0    | | 
+| tibble_3.0.6       |  ggplot2_3.3.3      |  tidyverse_1.3.0    | |
 
 Simulated data generation and results summaries were run using R version 4.0.2 (2020-06-22). The following R package versions were used:
 
