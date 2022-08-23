@@ -10,20 +10,20 @@ The code contains all functions that were used to generate simulation results (f
 
 To reproduce results, run the scripts in the “Scripts” folder in numerical order:
 -	Simulations/Scripts
-  -	0_Generate_data.R (was run locally)
-  -	1a_Run_simulations.R (was run on server)
-  -	1b_Run_simulations_full_ensemble.R (was run on server)
-  -	2_Summarize_simulation_results.Rmd (was run locally)
-  -	3_Generate_plots_for_presentation.Rmd (was run locally)
+  *	0_Generate_data.R (was run locally)
+  *	1a_Run_simulations.R (was run on server)
+  *	1b_Run_simulations_full_ensemble.R (was run on server)
+  *	2_Summarize_simulation_results.Rmd (was run locally)
+  *	3_Generate_plots_for_presentation.Rmd (was run locally)
 -	Real_data/Scripts (requires data so cannot be run)
-  -	1_Data_cleaning.R
-  -	2_EDA.Rmd
-  -	3_Estimates.R
-  -	4_Summarize_Medicaid_results.Rmd
-  -	Appendix_Accounting_for_CMY/Fixed_effects/1_Data_cleaning.R
-  -	Appendix_Accounting_for_CMY/Fixed_effects/3_Estimates.R
-  -	Appendix_Accounting_for_CMY/Random_effects/1_Data_cleaning.R
-  -	Appendix_Accounting_for_CMY/Random_effects/3_Estimates.R
+  *	1_Data_cleaning.R
+  *	2_EDA.Rmd
+  *	3_Estimates.R
+  *	4_Summarize_Medicaid_results.Rmd
+  *	Appendix_Accounting_for_CMY/Fixed_effects/1_Data_cleaning.R
+  *	Appendix_Accounting_for_CMY/Fixed_effects/3_Estimates.R
+  *	Appendix_Accounting_for_CMY/Random_effects/1_Data_cleaning.R
+  *	Appendix_Accounting_for_CMY/Random_effects/3_Estimates.R
 These scripts call the corresponding Helper_files to execute the code. Tables/figures corresponding to manuscript tables/figures are noted with “*PAPER TABLE/FIGURE Number* (table/figure:reference_label)” (e.g., *PAPER FIGURE 2* (figure:results_base_case)).
 
 ## Code Description
