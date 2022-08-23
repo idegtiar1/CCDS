@@ -1,5 +1,5 @@
 # Conditional Cross-Design Synthesis
-This repository contains code and simulated data for "Conditional Cross-Design Synthesis Estimators for Generalizability in Medicaid" by Irina Degtiar, Tim Layton, Jacob Wallace, and Sherri Rose (2021), arXiv:2109.13288. The conditional cross-design synthesis (CCDS) estimators presented in this paper combine randomized and observational data, while addressing their respective biases---lack of overlap in the randomized data and unmeasured confounding in the observational data. They thus allow for causal inference on a target population represented by a (possibly reweighted) union of the data sources. The estimators include outcome regression, propensity weighting, and double robust approaches. All use the covariate overlap between the randomized and observational data to remove potential unmeasured confounding bias
+This repository contains code and simulated data for "Conditional Cross-Design Synthesis Estimators for Generalizability in Medicaid" by Irina Degtiar, Tim Layton, Jacob Wallace, and Sherri Rose (2021), [arXiv:2109.13288](https://arxiv.org/abs/2109.13288). The conditional cross-design synthesis (CCDS) estimators presented in this paper combine randomized and observational data, while addressing their respective biases---lack of overlap in the randomized data and unmeasured confounding in the observational data. They thus allow for causal inference on a target population represented by a (possibly reweighted) union of the data sources. The estimators include outcome regression, propensity weighting, and double robust approaches. All use the covariate overlap between the randomized and observational data to remove potential unmeasured confounding bias
 
 # Instructions for Use
 ## CCDS estimators
@@ -9,21 +9,21 @@ The R function “get_estimates_with_bootstrap” in the Real_data/Helper_files/
 The code contains all functions that were used to generate simulation results (found in Section 5 and Supplemental Materials) and Medicaid study results (found in Section 6 and Supplemental Materials). All tables and figures for the paper’s simulation results can be reproduced by running the provided code; for the real data analysis, all code to reproduce tables & figures is provided but the necessary data cannot be provided due to the data use agreement with the Centers for Medicare and Medicaid Services.
 
 To reproduce results, run the scripts in the “Scripts” folder in numerical order:
-•	Simulations/Scripts
-  o	0_Generate_data.R (was run locally)
-  o	1a_Run_simulations.R (was run on server)
-  o	1b_Run_simulations_full_ensemble.R (was run on server)
-  o	2_Summarize_simulation_results.Rmd (was run locally)
-  o	3_Generate_plots_for_presentation.Rmd (was run locally)
-•	Real_data/Scripts (requires data so cannot be run)
-  o	1_Data_cleaning.R
-  o	2_EDA.Rmd
-  o	3_Estimates.R
-  o	4_Summarize_Medicaid_results.Rmd
-  o	Appendix_Accounting_for_CMY/Fixed_effects/1_Data_cleaning.R
-  o	Appendix_Accounting_for_CMY/Fixed_effects/3_Estimates.R
-  o	Appendix_Accounting_for_CMY/Random_effects/1_Data_cleaning.R
-  o	Appendix_Accounting_for_CMY/Random_effects/3_Estimates.R
+-	Simulations/Scripts
+  -	0_Generate_data.R (was run locally)
+  -	1a_Run_simulations.R (was run on server)
+  -	1b_Run_simulations_full_ensemble.R (was run on server)
+  -	2_Summarize_simulation_results.Rmd (was run locally)
+  -	3_Generate_plots_for_presentation.Rmd (was run locally)
+-	Real_data/Scripts (requires data so cannot be run)
+  -	1_Data_cleaning.R
+  -	2_EDA.Rmd
+  -	3_Estimates.R
+  -	4_Summarize_Medicaid_results.Rmd
+  -	Appendix_Accounting_for_CMY/Fixed_effects/1_Data_cleaning.R
+  -	Appendix_Accounting_for_CMY/Fixed_effects/3_Estimates.R
+  -	Appendix_Accounting_for_CMY/Random_effects/1_Data_cleaning.R
+  -	Appendix_Accounting_for_CMY/Random_effects/3_Estimates.R
 These scripts call the corresponding Helper_files to execute the code. Tables/figures corresponding to manuscript tables/figures are noted with “*PAPER TABLE/FIGURE Number* (table/figure:reference_label)” (e.g., *PAPER FIGURE 2* (figure:results_base_case)).
 
 ## Code Description
