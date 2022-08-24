@@ -423,7 +423,7 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
       ggplot(aes(pi_S, fill=S_target)) +
       annotate("rect", xmin = min_p_overlap, xmax = max_p_overlap, ymin = 0, ymax = Inf, 
                fill="pink", color=NA, size=0.5) + 
-      ylab("Percentage") + theme_bw() + ggtitle("Propensity for S, overlap region in light pink") +
+      ylab("Percentage") + theme_bw() + #ggtitle("Propensity for S, overlap region in light pink") +
       labs(fill="") 
     
     # logit(P(S)) plot
@@ -1134,7 +1134,7 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
   ##########################################################################################
   ### Estimate potential outcomes: 2-stage hybrid CCDS and weighted 2-stage hybrid CCDS
   ##########################################################################################
-  ### Use model fits from entire rand and entire obs data but estimate bias term via predictions 
+  ### Use model fits from entire RCT and entire obs data but estimate bias term via predictions 
   ###   for randomized data in overlap region
   if(complex_fit_models=="ensemble"){
     Ya_rand_pred_bias_overlap_2stageHCCDS_a = sapply(1:(length(levels_A)), function(i)
@@ -1236,14 +1236,14 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
   ### Estimate potential outcomes: CCDS-AIPW 
   ##########################################################################################
   Ya_rand_pred_CCDS_AIPW = sapply(1:(length(levels_A)), function(i) 
-    weight_rand*w1_Aa_trim[S_target==1,i]/sum(w1_Aa_trim[,i])*(Y_rand-Ya_rand_pred[,i]) + Ya_rand_pred[,i]) #pre-subsetting to rand data; weights then subset to rand A=1 data
+    weight_rand*w1_Aa_trim[S_target==1,i]/sum(w1_Aa_trim[,i])*(Y_rand-Ya_rand_pred[,i]) + Ya_rand_pred[,i]) #pre-subsetting to RCT data; weights then subset to RCT A=1 data
   Ya_obs_pred_CCDS_AIPW =  sapply(1:(length(levels_A)), function(i)
     weight_obs*w2_Aa_trim[S_target==0,i]/sum(w2_Aa_trim[,i])*(Y_obs-Ya_obs_pred[,i]) + Ya_obs_pred[,i]) #pre-subsetting to obs data
   Ya_obs_pred_bias_CCDS_AIPWa = sapply(1:(length(levels_A)), function(i)
     weight_obs*w3_Aa_trim[S_target==0,i]/sum(w3_Aa_trim[,i])*(Y_obs-Ya_obs_pred_bias_CCDSa[,i]) + Ya_obs_pred_bias_CCDSa[,i]) #pre-subsetting to obs data
   Ya_pred_bias_CCDS_AIPWb = sapply(1:(length(levels_A)), function(i)
     ifelse(S_target==1,weight_obs*w4_Aa_trim[S_target==1,i]/sum(w4_Aa_trim[,i])*(Y_rand-Ya_rand_pred_bias_CCDSb[,i]),
-           Ya_obs_pred_bias_CCDSb[,i])) #combo of rand (first component) and obs (second component) data
+           Ya_obs_pred_bias_CCDSb[,i])) #combo of RCT (first component) and obs (second component) data
   
   
   # Target population estimates: mean potential outcome estimates
@@ -1253,10 +1253,10 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
     set_names(levels_A)
   
   ##########################################################################################
-  ### Estimate potential outcomes: obs/rand
+  ### Estimate potential outcomes: obs/RCT
   ##########################################################################################
   ### Observational/randomized model predictions for observational/randomized data, respectively (ignoring unmeasured confounding)
-  Ya_rand_pred_obs_rand = Ya_rand_pred # rand estimate same as CCDS-OR
+  Ya_rand_pred_obs_rand = Ya_rand_pred # RCT estimate same as CCDS-OR
   Ya_obs_pred_obs_rand = Ya_obs_pred  # obs estimate same as biased preliminary estimate in CCDS-OR
   
   # Target population estimates
@@ -1269,7 +1269,7 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
   mean_Ya_target_pred_obs_rand = apply(Ya_target_pred_obs_rand, 2, weighted.mean, w = weight_sampling)
   
   ##########################################################################################
-  ### Estimate potential outcomes: rand
+  ### Estimate potential outcomes: RCT
   ##########################################################################################
   ### Randomized model predictions for all data (ignoring positivity violations)
   # Target population estimates
@@ -1391,7 +1391,7 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
   ##########################################################################################
   ### TMLE
   ##########################################################################################
-  ## Rand
+  ## RCT
   fit_tmle_rand <- lapply(seq(1:(length(levels_A))), function (i) tmle(Y=Y_rand, A=NULL, W=X_rand_matrix, 
                                                                        Delta=A_rand_all[,i], Q = cbind(0,Ya_rand_pred[,i]), gbound = propensity_trim_threshold, #Q=c(E(Y|A=0,X), E(Y|A=a,X)); First column of values doesn't matter. Symmetric bounds are assumed, pDelta1 <- .bound(pDelta1, c(1, min(gbounds)))
                                                                        pDelta1 = cbind(0,pi_A_rand_trim[S_target == 1,i]))) # First column of values doesn't matter
@@ -1408,8 +1408,8 @@ get_estimates = function(Y_rand, # outcome vector for randomized data
   ##########################################################################################
   ### AIPW
   ##########################################################################################
-  ## Rand
-  # Subset to rand study propensities 
+  ## RCT
+  # Subset to RCT study propensities 
   pi_A_rand_norm = pi_A_rand_trim[S_target == 1,] 
   
   # Obtain AIPW estimate
@@ -1617,18 +1617,18 @@ get_summary_table = function(results,
                  #"mean_target_pred_weighted2stageWD")
   
   
-  Estimators = factor(c("STSM rand OR", "STSM obs OR", # OR = outcome regression
-                        "STSM rand AIPW", "STSM obs AIPW", 
-                        "STSM rand TMLE", "STSM obs TMLE",
-                        "Rand OR","Obs/rand OR",
+  Estimators = factor(c("STSM RCT OR", "STSM obs OR", # OR = outcome regression
+                        "STSM RCT AIPW", "STSM obs AIPW", 
+                        "STSM RCT TMLE", "STSM obs TMLE",
+                        "RCT OR","Obs/RCT OR",
                        "CCDS","CCDS-AIPW","CCDS-IPW",#"2-stage CCDS",
                        "2-stage CCDS"),#,
                        #"weighted 2-stage hybrid CCDS",
                        #"2-stage WD", 
                        #"weighted 2-stage WD"), 
-                     levels=c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE",
+                     levels=c("STSM RCT OR", "STSM RCT AIPW", "STSM RCT TMLE",
                               "STSM obs OR", "STSM obs AIPW", "STSM obs TMLE",
-                              "Rand OR","Obs/rand OR","CCDS","CCDS-AIPW","CCDS-IPW",#"2-stage CCDS",
+                              "RCT OR","Obs/RCT OR","CCDS","CCDS-AIPW","CCDS-IPW",#"2-stage CCDS",
                               "2-stage CCDS"))#,
                               #"weighted 2-stage hybrid CCDS",
                               #"2-stage WD",
@@ -1691,23 +1691,23 @@ plot_results = function(my_table, A_levels, my_ylim=NULL){
     my_table[,"2.5% Adj"] = ifelse(my_table[,"2.5% Adj"]<my_ylim[1],my_ylim[1],my_table[,"2.5% Adj"])
     my_table[,"97.5% Adj"] = ifelse(my_table[,"97.5% Adj"]>my_ylim[2],my_ylim[2],my_table[,"97.5% Adj"])
   }
-  # Line for STSM rand estimate
+  # Line for STSM RCT estimate
   STSM_mean <- my_table %>%
-    filter(Estimator %in% "STSM rand AIPW") %>% 
+    filter(Estimator %in% "STSM RCT AIPW") %>% 
     group_by(Intervention) %>%
     summarise(STSM = mean(Estimate))
   
   # Add color grouping for estimators; subset to one set of STSM estimates
-  my_table = my_table %>%  filter(!(Estimator %in% c("STSM rand OR", "STSM obs OR",
-                                                     "STSM rand TMLE", "STSM obs TMLE"))) %>% 
-    mutate(Group = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "STSM",
-                       ifelse(Estimator %in% c("Rand OR", "Obs/rand OR"), "PTSM comparison",
+  my_table = my_table %>%  filter(!(Estimator %in% c("STSM RCT OR", "STSM obs OR",
+                                                     "STSM RCT TMLE", "STSM obs TMLE"))) %>% 
+    mutate(Group = ifelse(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW"), "STSM",
+                       ifelse(Estimator %in% c("RCT OR", "Obs/RCT OR"), "PTSM comparison",
                               "PTSM novel")),
            Estimator = recode(Estimator, "CCDS"="CCDS-OR", 
-                              "STSM rand AIPW" = "Rand AIPW",
+                              "STSM RCT AIPW" = "RCT AIPW",
                               "STSM obs AIPW" = "Obs AIPW",
-                              "Rand OR" = "Rand",
-                              "Obs/rand OR" = "Obs/rand"),
+                              "RCT OR" = "RCT",
+                              "Obs/RCT OR" = "Obs/RCT"),
            Group = factor(Group, levels = c("STSM", "PTSM comparison", "PTSM novel")))  
 
   

@@ -6,7 +6,7 @@
 gen_conf_sim_data_simple = function(N=1000000, # target population size
                                     desired_p_S = 1/5, # P(S=1)
                                     overlap_factor = 2, # factor by which overlap region differs from 50/50 split - determines size of overlap region. Bigger factor = larger overlap region
-                                    X1_upper_bound_quantile=10, # percent of the normal distribution in which we only observe rand data
+                                    X1_upper_bound_quantile=10, # percent of the normal distribution in which we only observe RCT data
                                     p_A_S1 = c(0.4,0.6), # P(A=1|S=1),P(A=2|S=1)
                                     beta_AU = 0.6, # strength of relationship between U and A
                                     beta_YA = -3, # strength of relationship between A and Y
@@ -57,7 +57,7 @@ gen_conf_sim_data_simple = function(N=1000000, # target population size
   ## Update S to ensure approximate n_rand:n_obs ratio desired
   #####################################################################################################
   print("Generating S to approximately ensure desired n_rand:n_obs ratio")
-  X1_upper_bound = 1-X1_upper_bound_quantile/100 # everything above bound will only have support in the rand data: half the rand data will be above this threshold, half below
+  X1_upper_bound = 1-X1_upper_bound_quantile/100 # everything above bound will only have support in the RCT data: half the RCT data will be above this threshold, half below
   X1_lower_bound = X1_upper_bound - overlap_factor/5 # everything below bound will only have support in the obs data
   
   set.seed(my_seed)
@@ -895,7 +895,7 @@ get_estimates = function(target_sample = my_target_sample, # target sample
   w3_A1 = ifelse(S_target==0 & A_target==1 & overlap_target==1,
                  1/(pi_Roverlap_obs*(1-pi_A_obs_overlap)),0)
   w4_A1 = ifelse(S_target==1 & A_target==1 & overlap_target==1,
-                 (1-pi_S)/(pi_S*pi_Roverlap_rand*(1-pi_A_rand_overlap)),0) # large weights occur because X1 very strongly predictive and any values smaller than observed rand overlap values (even if they're in the overlap region) are predicted to be non-overlap
+                 (1-pi_S)/(pi_S*pi_Roverlap_rand*(1-pi_A_rand_overlap)),0) # large weights occur because X1 very strongly predictive and any values smaller than observed RCT overlap values (even if they're in the overlap region) are predicted to be non-overlap
   
   w1_A2 = ifelse(S_target==1 & A_target==2,1/pi_A_rand,0)
   w2_A2 = ifelse(S_target==0 & A_target==2,1/pi_A_obs,0)
@@ -951,7 +951,7 @@ get_estimates = function(target_sample = my_target_sample, # target sample
   w3_A1_trim = ifelse(S_target==0 & A_target==1 & overlap_target==1,
                  1/w3_denom_A1_trim,0)
   w4_A1_trim = ifelse(S_target==1 & A_target==1 & overlap_target==1,
-                 (1-pi_S_trim)/w4_denom_A1_trim,0) # large weights occur because X1 very strongly predictive and any values smaller than observed rand overlap values (even if they're in the overlap region) are predicted to be non-overlap
+                 (1-pi_S_trim)/w4_denom_A1_trim,0) # large weights occur because X1 very strongly predictive and any values smaller than observed RCT overlap values (even if they're in the overlap region) are predicted to be non-overlap
   
   w1_A2_trim = ifelse(S_target==1 & A_target==2,1/pi_A_rand_trim,0)
   w2_A2_trim = ifelse(S_target==0 & A_target==2,1/pi_A_obs_trim,0)
@@ -1612,7 +1612,7 @@ get_estimates = function(target_sample = my_target_sample, # target sample
   ##########################################################################################
   ### Estimate potential outcomes: 2-stage hybrid CCDS and weighted 2-stage hybrid CCDS
   ##########################################################################################
-  ### Use model fits from entire rand and entire obs data but estimate bias term via predictions 
+  ### Use model fits from entire RCT and entire obs data but estimate bias term via predictions 
   ###   for randomized data in overlap region
   if(complex_fit_models=="ensemble"){
     # Y1
@@ -1929,15 +1929,15 @@ get_estimates = function(target_sample = my_target_sample, # target sample
   ### Estimate potential outcomes: CCDS-AIPW 
   ##########################################################################################
   # Y1
-  Y1_rand_pred_CCDS_AIPW = n_rand/n_target*w1_A1_trim[S_target==1]/sum(w1_A1_trim)*(Y_rand-Y1_rand_pred) + Y1_rand_pred # pre-subsetting to rand data; weights then subset to rand A=1 data
+  Y1_rand_pred_CCDS_AIPW = n_rand/n_target*w1_A1_trim[S_target==1]/sum(w1_A1_trim)*(Y_rand-Y1_rand_pred) + Y1_rand_pred # pre-subsetting to RCT data; weights then subset to RCT A=1 data
   Y1_obs_pred_CCDS_AIPW =  n_obs/n_target*w2_A1_trim[S_target==0]/sum(w2_A1_trim)*(Y_obs-Y1_obs_pred) + Y1_obs_pred # pre-subsetting to obs data
   Y1_obs_pred_bias_CCDS_AIPWa = n_obs/n_target*w3_A1_trim[S_target==0]/sum(w3_A1_trim)*(Y_obs-Y1_obs_pred_bias_CCDSa) + Y1_obs_pred_bias_CCDSa # pre-subsetting to obs data
   Y1_pred_bias_CCDS_AIPWb = ifelse(S_target==1,n_obs/n_target*w4_A1_trim[S_target==1]/sum(w4_A1_trim)*(Y_rand-Y1_rand_pred_bias_CCDSb),
-                                   Y1_obs_pred_bias_CCDSb) # combo of rand (first component) and obs (second component) data
+                                   Y1_obs_pred_bias_CCDSb) # combo of RCT (first component) and obs (second component) data
   
   
   # Y2
-  Y2_rand_pred_CCDS_AIPW = n_rand/n_target*w1_A2_trim[S_target==1]/sum(w1_A2_trim)*(Y_rand-Y2_rand_pred) + Y2_rand_pred # pre-subsetting to rand data; weights then subset to rand A=1 data
+  Y2_rand_pred_CCDS_AIPW = n_rand/n_target*w1_A2_trim[S_target==1]/sum(w1_A2_trim)*(Y_rand-Y2_rand_pred) + Y2_rand_pred # pre-subsetting to RCT data; weights then subset to RCT A=1 data
   Y2_obs_pred_CCDS_AIPW =  n_obs/n_target*w2_A2_trim[S_target==0]/sum(w2_A2_trim)*(Y_obs-Y2_obs_pred) + Y2_obs_pred # pre-subsetting to obs data
   Y2_obs_pred_bias_CCDS_AIPWa = n_obs/n_target*w3_A2_trim[S_target==0]/sum(w3_A2_trim)*(Y_obs-Y2_obs_pred_bias_CCDSa) + Y2_obs_pred_bias_CCDSa # pre-subsetting to obs data
   Y2_pred_bias_CCDS_AIPWb = ifelse(S_target==1,n_obs/n_target*w4_A1_trim[S_target==1]/sum(w4_A1_trim)*(Y_rand-Y2_rand_pred_bias_CCDSb),
@@ -1945,11 +1945,11 @@ get_estimates = function(target_sample = my_target_sample, # target sample
   # Y3
   Y3_rand_pred_CCDS_AIPW = Y3_obs_pred_CCDS_AIPW = Y3_obs_pred_bias_CCDS_AIPWa = Y3_pred_bias_CCDS_AIPWb = NA
   if(!is.na(levels_A[3])){
-    Y3_rand_pred_CCDS_AIPW = n_rand/n_target*w1_A3_trim[S_target==1]/sum(w1_A3_trim)*(Y_rand-Y3_rand_pred) + Y3_rand_pred # pre-subsetting to rand data; weights then subset to rand A=1 data
+    Y3_rand_pred_CCDS_AIPW = n_rand/n_target*w1_A3_trim[S_target==1]/sum(w1_A3_trim)*(Y_rand-Y3_rand_pred) + Y3_rand_pred # pre-subsetting to RCT data; weights then subset to RCT A=1 data
     Y3_obs_pred_CCDS_AIPW =  n_obs/n_target*w2_A3_trim[S_target==0]/sum(w2_A3_trim)*(Y_obs-Y3_obs_pred) + Y3_obs_pred # pre-subsetting to obs data
     Y3_obs_pred_bias_CCDS_AIPWa = n_obs/n_target*w3_A3_trim[S_target==0]/sum(w3_A3_trim)*(Y_obs-Y3_obs_pred_bias_CCDSa) + Y3_obs_pred_bias_CCDSa # pre-subsetting to obs data
     Y3_pred_bias_CCDS_AIPWb = ifelse(S_target==1,n_obs/n_target*w4_A1_trim[S_target==1]/sum(w4_A1_trim)*(Y_rand-Y3_rand_pred_bias_CCDSb),
-                                     Y3_obs_pred_bias_CCDSb) # combo of rand (first component) and obs (second component) data
+                                     Y3_obs_pred_bias_CCDSb) # combo of RCT (first component) and obs (second component) data
   }
   
   # Target population estimates: mean potential outcome estimates
@@ -1961,20 +1961,20 @@ get_estimates = function(target_sample = my_target_sample, # target sample
                                                 sum(Y3_obs_pred_bias_CCDS_AIPWa)+sum(Y3_pred_bias_CCDS_AIPWb))
   
   ##########################################################################################
-  ### Estimate potential outcomes: obs/rand
+  ### Estimate potential outcomes: obs/RCT
   ##########################################################################################
   ### Observational/randomized model predictions for observational/randomized data, respectively (ignoring unmeasured confounding)
   # Y1
-  Y1_rand_pred_obs_rand = Y1_rand_pred # rand estimate same as with CCDS-OR
+  Y1_rand_pred_obs_rand = Y1_rand_pred # RCT estimate same as with CCDS-OR
   Y1_obs_pred_obs_rand = Y1_obs_pred  # obs estimate same as biased obs estimate in CCDS-OR
   
   # Y2
-  Y2_rand_pred_obs_rand = Y2_rand_pred # rand estimate same as with CCDS-OR
+  Y2_rand_pred_obs_rand = Y2_rand_pred # RCT estimate same as with CCDS-OR
   Y2_obs_pred_obs_rand = Y2_obs_pred  # obs estimate same as biased obs estimate in CCDS-OR
   
   # Y3
   if(!is.na(levels_A[3])){
-    Y3_rand_pred_obs_rand = Y3_rand_pred # rand estimate same as with CCDS-OR
+    Y3_rand_pred_obs_rand = Y3_rand_pred # RCT estimate same as with CCDS-OR
     Y3_obs_pred_obs_rand = Y3_obs_pred  # obs estimate same as biased obs estimate in CCDS-OR
   }
   
@@ -2000,7 +2000,7 @@ get_estimates = function(target_sample = my_target_sample, # target sample
   
   
   ##########################################################################################
-  ### Estimate potential outcomes: rand
+  ### Estimate potential outcomes: RCT
   ##########################################################################################
   ### Randomized model predictions for all data (ignoring positivity violations)
   # Target population estimates
@@ -2578,16 +2578,16 @@ get_summary_table = function(sim_results, # output of run_simulation() function
                  # "mean_Y3_target_pred_a1a2",
                  # "mean_Y3_target_pred_a1a3",
                  # "mean_Y3_target_pred_a1a2a3")
-  Estimator = factor(c("Oracle","Rand","Obs/rand","CCDS","CCDS-AIPW","CCDS-IPW",#"2-stage CCDS",
+  Estimator = factor(c("Oracle","RCT","Obs/RCT","CCDS","CCDS-AIPW","CCDS-IPW",#"2-stage CCDS",
                        "weighted 2-stage CCDS",
                        "weighted 2-stage hybrid CCDS",
                        #"2-stage WD", 
                        "weighted 2-stage WD",
                        "Lu-obs/rand1",
-                       "Lu-rand",
+                       "Lu-RCT",
                        "Lu-obs/rand2"), #"Kallus"),
-                     levels=c("Oracle","Rand","Lu-rand",
-                              "Obs/rand",
+                     levels=c("Oracle","RCT","Lu-RCT",
+                              "Obs/RCT",
                               "Lu-obs/rand1",
                               "Lu-obs/rand2",
                               "CCDS","CCDS-AIPW","CCDS-IPW",#"2-stage CCDS",
@@ -2724,9 +2724,9 @@ get_lu2019_summary_table = function(sim_results, # output of run_simulation func
                         "Y1minusY2_target_pred_a1a2a3")
   
   Estimator = factor(c("Lu-obs/rand1",
-                       "Lu-rand",
+                       "Lu-RCT",
                        "Lu-obs/rand2"), 
-                     levels=c("Lu-rand",
+                     levels=c("Lu-RCT",
                               "Lu-obs/rand1",
                               "Lu-obs/rand2"))
   
@@ -2747,7 +2747,7 @@ get_lu2019_summary_table = function(sim_results, # output of run_simulation func
                          Y1minusY2_boot_results)
   
   out = rbind(Y1_long, Y2_long, Y1minusY2_long) %>% 
-    mutate(Estimator = fct_relevel(Estimator,c("Lu-rand",
+    mutate(Estimator = fct_relevel(Estimator,c("Lu-RCT",
                                                "Lu-obs/rand1",
                                                "Lu-obs/rand2")),
            Estimand = fct_relevel(Estimand,c("E(Y^1)",
@@ -2770,7 +2770,7 @@ plot_bias_rmse_results = function(my_tables, # stack of outputs of get_summary_t
                                   my_estimands = c("E(Y^1)","E(Y^2)","E(Y^1) - E(Y^2)"), # estimands to summarize in plots, from c("E(Y^1)","E(Y^2)","E(Y^3)","E(Y^1) - E(Y^2)")
                                   exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
                                                          "2-stage WD", "weighted 2-stage WD",
-                                                         "Lu-rand", "Lu-obs/rand1", "Lu-obs/rand2"), # Estimators in my_tables to exclude from plot
+                                                         "Lu-RCT", "Lu-obs/rand1", "Lu-obs/rand2"), # Estimators in my_tables to exclude from plot
                                   my_ylim=c(0,max(sqrt(my_tables$MSE), na.rm=T))){ # y-axis limits
   
   # Format table
@@ -2778,8 +2778,8 @@ plot_bias_rmse_results = function(my_tables, # stack of outputs of get_summary_t
                          my_tables$Estimator %notin%  exclude_estimators,] %>% 
     mutate(Estimator = gsub("weighted","",Estimator),
            Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
-           Estimator = factor(Estimator, levels = c("Rand","Lu-rand",
-                                                    "Obs/rand",
+           Estimator = factor(Estimator, levels = c("RCT","Lu-RCT",
+                                                    "Obs/RCT",
                                                     "Lu-obs/rand1",
                                                     "Lu-obs/rand2",
                                                     " 2-stage WD",
@@ -2830,8 +2830,8 @@ plot_coverage_results = function(my_tables, # stack of outputs of get_summary_ta
                            my_tables$Estimator %notin% exclude_estimators, ] %>% 
     mutate(Estimator = gsub("weighted","",Estimator),
            Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
-           Estimator = factor(Estimator,levels = c("Rand","Obs/rand",
-                                                   "Lu-rand",
+           Estimator = factor(Estimator,levels = c("RCT","Obs/RCT",
+                                                   "Lu-RCT",
                                                    "Lu-obs/rand1",
                                                    "Lu-obs/rand2"," 2-stage WD",
                                                    "CCDS-OR","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW")))
@@ -2865,6 +2865,103 @@ plot_coverage_results = function(my_tables, # stack of outputs of get_summary_ta
 
 #####################################################################################################
 #####################################################################################################
+## Function to create plot of bias and RMSE for EY1 across estimators with only weighted estimators
+#####################################################################################################
+#####################################################################################################
+plot_bias_rmse_results_EY1 = function(my_tables, # stack of outputs of get_summary_table function with "Type" column corresponding names
+                                      my_estimands = c("E(Y^1)"), # estimands to summarize in plots, from c("E(Y^1)","E(Y^2)","E(Y^3)","E(Y^1) - E(Y^2)")
+                                      exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
+                                                             "2-stage WD", "weighted 2-stage WD",
+                                                             "Lu-RCT", "Lu-obs/RCT1", "Lu-obs/RCT2"), # Estimators in my_tables to exclude from plot
+                                      my_ylim=c(0,max(sqrt(my_tables$MSE), na.rm=T))){ # target population on which simulation was run
+  my_tables2 = my_tables[my_tables$Estimand %in% my_estimands & 
+                           my_tables$Estimator %notin%  exclude_estimators,] %>% 
+    mutate(Estimator = gsub("weighted","",Estimator),
+           Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
+           Estimator = factor(Estimator, levels = c("RCT","Lu-RCT",
+                                                    "Obs/RCT",
+                                                    "Lu-obs/RCT1",
+                                                    "Lu-obs/RCT2",
+                                                    " 2-stage WD",
+                                                    "CCDS-OR","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW")),
+           Abs_Bias = abs(Bias),
+           RMSE = sqrt(MSE),
+           RMSE_minus_Abs_Bias = RMSE - Abs_Bias)
+  
+  # Ensure facet_grid labels include exponents and line breaks
+  my_estimands = factor(my_estimands, levels = my_estimands, labels = my_estimands)
+  my_tables2$Type = factor(my_tables2$Type, labels = c(~atop("Correctly specified", "true overlap"),
+                                                       ~atop("Main terms", "true overlap"),
+                                                       ~atop("Ensemble", "true overlap"),
+                                                       ~atop("Ensemble", "estimated overlap")))
+  ############################################################################################
+  ### Plots of predictions and biases (population average treatment mean, PATM, perspective)
+  ### Plot of population mean estimates
+  ############################################################################################
+  my_tables2 %>% 
+    select(Type, Estimand, Estimator, Abs_Bias, RMSE_minus_Abs_Bias) %>% 
+    gather(Statistic, Amount, Abs_Bias:RMSE_minus_Abs_Bias) %>% 
+    ggplot(., aes(x=Estimator, y=Amount, fill=forcats::fct_rev(Statistic))) +
+    geom_bar(stat="identity", show.legend = FALSE) +
+    theme_bw() + #base_size = 35
+    xlab("") + ylab("Bias/RMSE") + ylim(my_ylim) +
+    facet_grid(. ~ factor(Type), scales = "free",labeller = "label_parsed") +
+    theme(axis.text.x = element_text(angle=45, hjust=1),
+          plot.caption = element_text(hjust = 0, face= "italic"))+#,
+    scale_fill_manual(values=(c("#b2df8a","#1f78b4"))) 
+  
+}
+
+
+#####################################################################################################
+#####################################################################################################
+## Function to create plot of coverage for EY1 across estimators with only weighted estimators
+#####################################################################################################
+#####################################################################################################
+plot_coverage_results_EY1 = function(my_tables, # stack of outputs of get_summary_table function with "Type" column corresponding names
+                                     my_estimands = c("E(Y^1)"), # estimands to summarize in plots, from c("E(Y^1)","E(Y^2)","E(Y^3)","E(Y^1) - E(Y^2)")
+                                     exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
+                                                            "2-stage WD", "weighted 2-stage WD",
+                                                            "Lu-RCT", "Lu-obs/RCT1", "Lu-obs/RCT2"), # Estimators in my_tables to exclude from plot
+                                     my_ylim=c(-0.05,1.05)){ # target population on which simulation was run
+  my_tables2 = my_tables[my_tables$Estimand %in% my_estimands & 
+                           my_tables$Estimator %notin% exclude_estimators, ] %>% 
+    mutate(Estimator = gsub("weighted","",Estimator),
+           Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
+           Estimator = factor(Estimator,levels = c("RCT","Obs/RCT",
+                                                   "Lu-RCT",
+                                                   "Lu-obs/RCT1",
+                                                   "Lu-obs/RCT2"," 2-stage WD",
+                                                   "CCDS-OR","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW")))
+  
+  # Ensure facet_grid labels include exponents and line breaks
+  my_estimands = factor(my_estimands, levels = my_estimands, labels = my_estimands)
+  my_tables2$Type = factor(my_tables2$Type, labels = c(~atop("Correctly specified", "true overlap"),
+                                                       ~atop("Main terms", "true overlap"),
+                                                       ~atop("Ensemble", "estimated overlap")))
+  
+  ############################################################################################
+  ### Plots of coverage and CI width (for estimating population average treatment mean, PATM)
+  ############################################################################################
+  my_tables2 %>% 
+    select(Type, Estimand, Estimator, mean_coverage, mean_ci_width) %>% 
+    #gather(Statistic, Amount, Abs_Bias:RMSE_minus_Abs_Bias) %>% 
+    ggplot(., aes(x=mean_ci_width, y=mean_coverage, col=Estimator, shape=Estimator)) + #, fill=forcats::fct_rev(Statistic))) +
+    geom_point(position = position_jitter(width = 0.02, height = 0.02)) +
+    geom_hline(yintercept=0.95, linetype='dashed') + 
+    theme_bw() + theme(legend.position="right", 
+                       legend.title = element_blank(), 
+                       legend.text = element_text(size=8),
+                       plot.caption = element_text(hjust = 0, face= "italic")) + #base_size = 35
+    xlab("Mean CI Width") + ylab("Mean Coverage") + ylim(my_ylim) +
+    scale_shape_manual(values = c(16,17,15,3,7,8,4,0,1,9)) +
+    facet_grid(. ~ factor(Type), scales = "free",labeller = "label_parsed") #+
+  
+  
+}
+
+#####################################################################################################
+#####################################################################################################
 ## Function to create line plots of bias and RMSE results across estimators
 #####################################################################################################
 #####################################################################################################
@@ -2873,14 +2970,14 @@ plot_bias_rmse_separately = function(my_tables, # stack of outputs of get_summar
                                      estimators_remove = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
                                                            "weighted 2-stage hybrid CCDS",
                                                            "2-stage WD", "weighted 2-stage WD",
-                                                           "Lu-rand", "Lu-obs/rand1", "Lu-obs/rand2")){ # Estimators in my_tables to exclude from plot
+                                                           "Lu-RCT", "Lu-obs/rand1", "Lu-obs/rand2")){ # Estimators in my_tables to exclude from plot
   # Format table
   my_tables2 = my_tables[my_tables$Estimand %in% my_estimands & 
                            my_tables$Estimator %notin% estimators_remove ,] %>% 
     mutate(Estimator = gsub("weighted","",Estimator),
            Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
-           Estimator = factor(Estimator,levels = c("Rand","Obs/rand",
-                                                   "Lu-rand",
+           Estimator = factor(Estimator,levels = c("RCT","Obs/RCT",
+                                                   "Lu-RCT",
                                                    "Lu-obs/rand1",
                                                    "Lu-obs/rand2"," 2-stage WD",
                                                    "CCDS-OR","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW")), 
@@ -2994,16 +3091,16 @@ summarize_simulation_bootstrap_results = function(sim_results){ # bootstrap simu
                  #"mean_Y1minusY2_target_pred_2stageWD",
                  "mean_Y1minusY2_target_pred_weighted2stageWD")
   
-  Estimator = factor(c("Oracle","Rand","Obs/rand","CCDS","CCDS-IPW","CCDS-AIPW",#"2-stage CCDS",
+  Estimator = factor(c("Oracle","RCT","Obs/RCT","CCDS","CCDS-IPW","CCDS-AIPW",#"2-stage CCDS",
                        "weighted 2-stage CCDS",
                        "weighted 2-stage hybrid CCDS",
                        #"2-stage WD", 
                        "weighted 2-stage WD",
                        "Lu-obs/rand1",
-                       "Lu-rand",
+                       "Lu-RCT",
                        "Lu-obs/rand2"), #"Kallus"),
-                     levels=c("Oracle","Rand","Obs/rand",
-                              "Lu-rand",
+                     levels=c("Oracle","RCT","Obs/RCT",
+                              "Lu-RCT",
                               "Lu-obs/rand1",
                               "Lu-obs/rand2",
                               "CCDS","CCDS-IPW","CCDS-AIPW",#"2-stage CCDS",
@@ -3029,8 +3126,8 @@ summarize_simulation_bootstrap_results = function(sim_results){ # bootstrap simu
                   Y1minusY2_boot_results)
   
   out = rbind(Y1_long, Y2_long, Y1minusY2_long) %>% 
-    mutate(Estimator = fct_relevel(Estimator,c("Oracle","Rand","Obs/rand",
-                                               "Lu-rand",
+    mutate(Estimator = fct_relevel(Estimator,c("Oracle","RCT","Obs/RCT",
+                                               "Lu-RCT",
                                                "Lu-obs/rand1",
                                                "Lu-obs/rand2",
                                                "CCDS","CCDS-IPW","CCDS-AIPW",#"2-stage CCDS",
@@ -3478,7 +3575,7 @@ summarize_sim_data = function(N=my_N, # target population size
   
   
   ##########################################################################################
-  ### Assess CATE estimates from rand and obs data
+  ### Assess CATE estimates from RCT and obs data
   ##########################################################################################
   ### Data in overlap region
   X_rand_overlap_matrix = model.matrix(~.,X_rand_overlap)[,-1]
@@ -3610,16 +3707,16 @@ summarize_sim_data = function(N=my_N, # target population size
   ### Estimate potential outcomes: comparison estimators
   ### Observational/randomized model predictions for observational/randomized data, respectively (ignoring unmeasured confounding)
   # Y1
-  Y1_rand_pred_obs_rand = Y1_rand_pred # rand estimate same as CCDS-OR
+  Y1_rand_pred_obs_rand = Y1_rand_pred # RCT estimate same as CCDS-OR
   Y1_obs_pred_obs_rand = Y1_obs_pred  # obs estimate same as biased estimate in CCDS-OR
   
   # Y2
-  Y2_rand_pred_obs_rand = Y2_rand_pred # rand estimate same as CCDS-OR
+  Y2_rand_pred_obs_rand = Y2_rand_pred # RCT estimate same as CCDS-OR
   Y2_obs_pred_obs_rand = Y2_obs_pred  # obs estimate same as biased estimate in CCDS-OR
   
   # Y3
   if(!is.na(levels_A[3])){
-    Y3_rand_pred_obs_rand = Y3_rand_pred # rand estimate same as CCDS-OR
+    Y3_rand_pred_obs_rand = Y3_rand_pred # RCT estimate same as CCDS-OR
     Y3_obs_pred_obs_rand = Y3_obs_pred  # obs estimate same as biased estimate in CCDS-OR
   }
   
@@ -3648,7 +3745,7 @@ summarize_sim_data = function(N=my_N, # target population size
   
   
   ##########################################################################################
-  # Check relationship between rand and obs predictions
+  # Check relationship between RCT and obs predictions
   # Sample from sample for plotting feasibility
   sample_target = if(n_target>1000){sample(1:n_target,1000,replace=F)}else{seq(1:n_target)}
   sample_rand = if(n_rand>500){sample(1:n_rand,500,replace=F)}else{seq(1:n_rand)}
@@ -3656,36 +3753,36 @@ summarize_sim_data = function(N=my_N, # target population size
   
   # Y1
   plot_CATE_Y1 = cbind.data.frame("X1"=X_target[sample_target,1],
-                                  "Rand"=Y1_target_pred_rand[sample_target],
+                                  "RCT"=Y1_target_pred_rand[sample_target],
                                   "Obs"=ifelse(S_target==0,Y1_target_pred_obs_rand,NA)[sample_target],
                                   "S"=as.factor(S_target[sample_target])) %>% 
-    ggplot(aes(X1,Rand)) +
+    ggplot(aes(X1,RCT)) +
     annotate("rect", xmin = min_X1_overlap, xmax = max_X1_overlap, ymin = -Inf, ymax = Inf, 
              fill="lightyellow", color=NA, size=0.5) + 
-    geom_point(aes(col="Rand"),alpha=0.2)+#color="blue") + 
+    geom_point(aes(col="RCT"),alpha=0.2)+#color="blue") + 
     geom_point(aes(X1,Obs,col="Obs"),alpha=0.2) +
-    geom_smooth(aes(col="Rand"))+
+    geom_smooth(aes(col="RCT"))+
     geom_smooth(aes(X1,Obs,col="Obs"),alpha=0.2) +
     
     ylab("E(Y^a|X1) predictions") + 
-    ggtitle("Obs and rand Y1 model predictions across X1")
+    ggtitle("Obs and RCT Y1 model predictions across X1")
   
   
   
   # Y2
   plot_CATE_Y2 = cbind.data.frame("X1"=X_target[sample_target,1],
-                                  "Rand"=Y2_target_pred_rand[sample_target],
+                                  "RCT"=Y2_target_pred_rand[sample_target],
                                   "Obs"=ifelse(S_target==0,Y2_target_pred_obs_rand,NA)[sample_target],
                                   "S"=as.factor(S_target[sample_target])) %>% 
-    ggplot(aes(X1,Rand)) +
+    ggplot(aes(X1,RCT)) +
     annotate("rect", xmin = min_X1_overlap, xmax = max_X1_overlap, ymin = -Inf, ymax = Inf, 
              fill="lightyellow", color=NA, size=0.5) + 
-    geom_point(aes(col="Rand"),alpha=0.2)+#color="blue") + 
+    geom_point(aes(col="RCT"),alpha=0.2)+#color="blue") + 
     geom_point(aes(X1,Obs,col="Obs"),alpha=0.2) +
-    geom_smooth(aes(col="Rand"))+
+    geom_smooth(aes(col="RCT"))+
     geom_smooth(aes(X1,Obs,col="Obs"),alpha=0.2) +
     ylab("E(Y^a|X1) predictions") +  
-    ggtitle("Obs and rand Y2 model predictions across X1")
+    ggtitle("Obs and RCT Y2 model predictions across X1")
   
   # Add line for truth depending on DGM/which assumption is being violated
   if(complex_gen_model == F) {
@@ -3746,10 +3843,10 @@ summarize_sim_data = function(N=my_N, # target population size
   
   plot_bias_obs_Y1 = cbind.data.frame(X1 = X_obs[,1], "Obs"= Y1_obs_pred - Y1_obs,
                                       "Obs overlap"=Y1_obs_pred_bias_CCDSa- Y1_obs, 
-                                      "Rand overlap"=Y1_obs_pred_bias_CCDSb- Y1_obs, 
+                                      "RCT overlap"=Y1_obs_pred_bias_CCDSb- Y1_obs, 
                                       "CCDS"=Y1_obs_pred_debiased_CCDS- Y1_obs) %>%  
     mutate(`Obs overlap` = ifelse(X1<min_X1_overlap,NA,`Obs overlap`),
-           `Rand overlap` = ifelse(X1<min_X1_overlap,NA,`Rand overlap`)) %>% 
+           `RCT overlap` = ifelse(X1<min_X1_overlap,NA,`RCT overlap`)) %>% 
     gather(Model,Bias,-X1) %>% 
     ggplot(aes(X1,Bias,col=Model))+
     annotate("rect", xmin = min_X1_overlap, xmax = max_X1_overlap, ymin = -Inf, ymax = Inf, 
@@ -3757,9 +3854,9 @@ summarize_sim_data = function(N=my_N, # target population size
     geom_smooth()+geom_hline(aes(yintercept=0)) +  
     ggtitle("Bias in E(Y1|X1) predictions") + scale_color_manual(values=c("purple", "orange", "red", "blue"))
   
-  plot_bias_rand_Y1 = cbind.data.frame(X1=X_rand[,1], "Rand overlap" = Y1_rand_pred_overlap-Y1_rand, 
-                                       "Rand"=Y1_rand_pred-Y1_rand) %>%  
-    mutate(`Rand overlap` = ifelse(X1>max_X1_overlap,NA,`Rand overlap`)) %>%  
+  plot_bias_rand_Y1 = cbind.data.frame(X1=X_rand[,1], "RCT overlap" = Y1_rand_pred_overlap-Y1_rand, 
+                                       "RCT"=Y1_rand_pred-Y1_rand) %>%  
+    mutate(`RCT overlap` = ifelse(X1>max_X1_overlap,NA,`RCT overlap`)) %>%  
     gather(Model,Bias,-X1) %>% 
     ggplot(aes(X1,Bias,col=Model))+
     annotate("rect", xmin = min_X1_overlap, xmax = max_X1_overlap, ymin = -Inf, ymax = Inf, 
@@ -3769,10 +3866,10 @@ summarize_sim_data = function(N=my_N, # target population size
   
   plot_bias_obs_Y2 = cbind.data.frame(X1 = X_obs[,1], "Obs"= Y2_obs_pred - Y2_obs,
                                       "Obs overlap"=Y2_obs_pred_bias_CCDSa- Y2_obs, 
-                                      "Rand overlap"=Y2_obs_pred_bias_CCDSb- Y2_obs, 
+                                      "RCT overlap"=Y2_obs_pred_bias_CCDSb- Y2_obs, 
                                       "CCDS"=Y2_obs_pred_debiased_CCDS- Y2_obs) %>%  
     mutate(`Obs overlap` = ifelse(X1<min_X1_overlap,NA,`Obs overlap`),
-           `Rand overlap` = ifelse(X1<min_X1_overlap,NA,`Rand overlap`)) %>% 
+           `RCT overlap` = ifelse(X1<min_X1_overlap,NA,`RCT overlap`)) %>% 
     gather(Model,Bias,-X1) %>% 
     ggplot(aes(X1,Bias,col=Model))+
     annotate("rect", xmin = min_X1_overlap, xmax = max_X1_overlap, ymin = -Inf, ymax = Inf, 
@@ -3780,9 +3877,9 @@ summarize_sim_data = function(N=my_N, # target population size
     geom_smooth()+geom_hline(aes(yintercept=0)) +  
     ggtitle("Bias in E(Y2|X1) predictions") + scale_color_manual(values=c("purple", "orange", "red", "blue"))
   
-  plot_bias_rand_Y2 = cbind.data.frame(X1=X_rand[,1], "Rand overlap" = Y2_rand_pred_overlap-Y2_rand, 
-                                       "Rand"=Y2_rand_pred-Y2_rand) %>%  
-    mutate(`Rand overlap` = ifelse(X1>max_X1_overlap,NA,`Rand overlap`)) %>%  
+  plot_bias_rand_Y2 = cbind.data.frame(X1=X_rand[,1], "RCT overlap" = Y2_rand_pred_overlap-Y2_rand, 
+                                       "RCT"=Y2_rand_pred-Y2_rand) %>%  
+    mutate(`RCT overlap` = ifelse(X1>max_X1_overlap,NA,`RCT overlap`)) %>%  
     gather(Model,Bias,-X1) %>% 
     ggplot(aes(X1,Bias,col=Model))+
     annotate("rect", xmin = min_X1_overlap, xmax = max_X1_overlap, ymin = -Inf, ymax = Inf, 
@@ -3876,7 +3973,7 @@ summarize_simulation_results = function(sim_results, sim_data = sim_data_complex
       set_rownames(sapply(names(mean_alg_weights_sim[1:n_table_rows]), 
                           function(x) str_match(x,"_(.*?)_"))[2,]) %>% 
       set_colnames(c("S", "Roverlap_rand","Roverlap_obs","A_rand","A_obs","A_rand_overlap",
-                     "A_obs_overlap","rand","obs","rand_overlap_","obs_overlap")) %>% 
+                     "A_obs_overlap","RCT","obs","rand_overlap_","obs_overlap")) %>% 
       round(2) %>% kable("html") %>% 
       kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) %>% 
       row_spec(n_table_rows, hline_after=T) %>% print()
@@ -3885,27 +3982,27 @@ summarize_simulation_results = function(sim_results, sim_data = sim_data_complex
   # Overlap and biases
   mean_overlap_sim = c("Overall"=mean(sim_results2$mean_overlap_target),
                        "Obs"=mean(sim_results2$mean_overlap_obs),
-                       "Rand"=mean(sim_results2$mean_overlap_rand))
+                       "RCT"=mean(sim_results2$mean_overlap_rand))
   print("Mean overlap"); cat("\n"); mean_overlap_sim %>% round(2) %>% kable() %>% print()
   cat("\n")
   
   mean_STSM_biases_CCDS_sim = apply(sim_results2[,(56+6):(73+6)],2,mean)
-  print("STSM percent biases for CCDS estimator (=rand estimator for rand STSM)")
+  print("STSM percent biases for CCDS estimator (=RCT estimator for RCT STSM)")
   cat("\n")
   mean_STSM_biases_CCDS_sim %>% matrix(.,nrow=9,ncol=2) %>% 
     set_colnames(.,c("Y1","Y2")) %>% set_rownames(.,c("Obs","Obs observed","Obs overlap","Obs nonoverlap",
-                                                      "Rand","Rand observed","Rand overlap", "Rand overlap observed","Rand nonoverlap"))%>% 
+                                                      "RCT","RCT observed","RCT overlap", "RCT overlap observed","RCT nonoverlap"))%>% 
     round(2)  %>% kable() %>%  print()
   cat("\n")
   
-  # Focus on rand and rand overlap 
+  # Focus on RCT and RCT overlap 
   print("STSM percent biases for Y1")
   cat("\n")
   summary_STSM_biases_CCDS_complex_linear = apply(sim_results2[,(60+6):(63+6)],2,
                                                   function(x)c("Mean"=mean(x, na.rm=T), 
                                                                quantile(x,0.025, na.rm=T), 
                                                                quantile(x,0.975, na.rm=T)))
-  summary_STSM_biases_CCDS_complex_linear %>% set_colnames(.,c("Rand","Rand observed","Rand overlap", "Rand overlap observed"))%>%
+  summary_STSM_biases_CCDS_complex_linear %>% set_colnames(.,c("RCT","RCT observed","RCT overlap", "RCT overlap observed"))%>%
     round(2) %>% kable() %>% print()
   cat("\n")
   

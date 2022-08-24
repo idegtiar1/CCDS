@@ -94,22 +94,22 @@ All sample average treatment-specific mean (STSM) estimates were derived using a
 table_linear = get_summary_table(estimates_linear, boot_linear, levels_A = levels_A, ensemble = F)
 
 # Add color grouping for estimators
-table_linear_STSM = table_linear %>% filter(Estimator %in% c("STSM rand OR", "STSM obs OR", # OR = outcome regression
-                                                             "STSM rand AIPW", "STSM rand TMLE", 
+table_linear_STSM = table_linear %>% filter(Estimator %in% c("STSM RCT OR", "STSM obs OR", # OR = outcome regression
+                                                             "STSM RCT AIPW", "STSM RCT TMLE", 
                                          "STSM obs AIPW", "STSM obs TMLE")) %>% 
-  mutate(Estimator2 = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "AIPW",
-                       ifelse(Estimator %in% c("STSM rand TMLE", "STSM obs TMLE"), "TMLE",
-                              ifelse(Estimator %in% c("STSM rand OR", "STSM obs OR"), "OR",
+  mutate(Estimator2 = ifelse(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW"), "AIPW",
+                       ifelse(Estimator %in% c("STSM RCT TMLE", "STSM obs TMLE"), "TMLE",
+                              ifelse(Estimator %in% c("STSM RCT OR", "STSM obs OR"), "OR",
                               "Other"))),
-         Data = ifelse(Estimator %in% c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE"), "rand",
+         Data = ifelse(Estimator %in% c("STSM RCT OR", "STSM RCT AIPW", "STSM RCT TMLE"), "RCT",
                        ifelse(Estimator %in% c("STSM obs OR", "STSM obs AIPW", "STSM obs TMLE"), "obs",
                               "Other"))) %>% 
     mutate(Estimator2 = factor(Estimator2, levels = c("OR", "AIPW", "TMLE")),
-           Data = factor(Data, levels = c("rand", "obs")))
+           Data = factor(Data, levels = c("RCT", "obs")))
 
-# Re-order plans based on rand study averages  
-levels_A_sorted = levels(fct_reorder(table_linear_STSM[table_linear_STSM$Data=="rand","Intervention"], 
-                                     table_linear_STSM[table_linear_STSM$Data=="rand","Estimate"], mean)) 
+# Re-order plans based on RCT study averages  
+levels_A_sorted = levels(fct_reorder(table_linear_STSM[table_linear_STSM$Data=="RCT","Intervention"], 
+                                     table_linear_STSM[table_linear_STSM$Data=="RCT","Estimate"], mean)) 
 table_linear$Intervention = table_linear$Intervention %>%  
   factor(., levels =levels_A_sorted) 
 table_linear_STSM$Intervention = table_linear_STSM$Intervention %>% 
@@ -158,8 +158,8 @@ paste0("Mean observed bias (diff observed vs. predicted outcome on plan)")
 estimates_linear[,c(which(colnames(estimates_linear)=="mean_bias_obs_observed.A"):
                       which(colnames(estimates_linear)=="mean_bias_rand_overlap_observed.J"))] %>% 
   round(2) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("Obs",
-                                                                               "Rand",
-                                                                               "Rand overlap"))
+                                                                               "RCT",
+                                                                               "RCT overlap"))
 
 # Difference between highest- and lowest-spending plan
 paste0("Smallest spending: ",levels_A_sorted[1])
@@ -179,8 +179,8 @@ table_linear %>% filter(Intervention %in% c(levels_A_sorted[1], tail(levels_A_so
 ## Subset of estimators
 ```{r results_linear_subset} 
 # Plot results for subset of CCDS estimators
-plot_results(table_linear %>% filter(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW",   
-                                                      "Rand OR", "Obs/rand OR",
+plot_results(table_linear %>% filter(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW",   
+                                                      "RCT OR", "Obs/RCT OR",
                                                       "CCDS-AIPW", "2-stage CCDS")), levels_A_sorted) + 
   facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)  
 ```
@@ -202,18 +202,18 @@ table_linear %>% arrange(Intervention) %>% mutate_if(is.numeric, round, 2) %>% k
 table_ensemble = get_summary_table(estimates_ensemble, boot_ensemble, levels_A = levels_A, ensemble = F)
 
 # Add color grouping for estimators
-table_ensemble_STSM = table_ensemble %>% filter(Estimator %in% c("STSM rand OR", "STSM obs OR",
-                                                             "STSM rand AIPW", "STSM rand TMLE", 
+table_ensemble_STSM = table_ensemble %>% filter(Estimator %in% c("STSM RCT OR", "STSM obs OR",
+                                                             "STSM RCT AIPW", "STSM RCT TMLE", 
                                          "STSM obs AIPW", "STSM obs TMLE")) %>% 
-  mutate(Estimator2 = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "AIPW",
-                       ifelse(Estimator %in% c("STSM rand TMLE", "STSM obs TMLE"), "TMLE",
-                              ifelse(Estimator %in% c("STSM rand OR", "STSM obs OR"), "OR",
+  mutate(Estimator2 = ifelse(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW"), "AIPW",
+                       ifelse(Estimator %in% c("STSM RCT TMLE", "STSM obs TMLE"), "TMLE",
+                              ifelse(Estimator %in% c("STSM RCT OR", "STSM obs OR"), "OR",
                               "Other"))),
-         Data = ifelse(Estimator %in% c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE"), "rand",
+         Data = ifelse(Estimator %in% c("STSM RCT OR", "STSM RCT AIPW", "STSM RCT TMLE"), "RCT",
                        ifelse(Estimator %in% c("STSM obs OR", "STSM obs AIPW", "STSM obs TMLE"), "obs",
                               "Other"))) %>% 
     mutate(Estimator2 = factor(Estimator2, levels = c("OR", "AIPW", "TMLE")),
-           Data = factor(Data, levels = c("rand", "obs")))
+           Data = factor(Data, levels = c("RCT", "obs")))
 
 # Re-order plans based on study averages & replace plan X with J 
 table_ensemble$Intervention = table_ensemble$Intervention %>% recode_factor(., "X" = "J") %>%  
@@ -263,8 +263,8 @@ paste0("Mean observed bias (diff observed vs. predicted outcome on plan)")
 estimates_ensemble[,c(which(colnames(estimates_ensemble)=="mean_bias_obs_observed.A"):
                       which(colnames(estimates_ensemble)=="mean_bias_rand_overlap_observed.J"))] %>% 
   round(2) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("Obs",
-                                                                               "Rand",
-                                                                               "Rand overlap"))
+                                                                               "RCT",
+                                                                               "RCT overlap"))
 
 # Difference between highest- and lowest-spending plan
 paste0("Smallest spending: ",levels_A_sorted[1])
@@ -291,7 +291,7 @@ mean_alg_weights_sim %>%
                  apply(expand.grid("A_obs", levels_A), 1, paste, collapse="."),
                  apply(expand.grid("A_rand_overlap", levels_A), 1, paste, collapse="."),
                  apply(expand.grid("A_obs_overlap", levels_A), 1, paste, collapse="."),
-                 "rand","obs","rand_overlap","obs_overlap")) %>%
+                 "RCT","obs","rand_overlap","obs_overlap")) %>%
   round(2) %>% kable("html") %>%
   kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
   
@@ -303,22 +303,63 @@ mean_alg_weights_sim %>%
 *PAPER FIGURE 4* (figure:results_Medicaid)
 ```{r results_ensemble_subset} 
 # Plot results for subset of CCDS estimators
-plot_results(table_ensemble %>% filter(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW",  
-                                                      "Rand OR", "Obs/rand OR",
+plot_results(table_ensemble %>% filter(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW",  
+                                                      "RCT OR", "Obs/RCT OR",
                                                       "CCDS-AIPW", "2-stage CCDS")), levels_A_sorted) + 
   facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)   
 ```
 
-## Differences CCDS-AIPW vs. rand estimates
+## Differences between estimates
 Note: min/max values are the mins/maxes for each respective column and don't necessarily all refer to the same row of data.
-```{r rand_aipw_diff}
-# Difference between CCDS-AIPW vs. rand estimates
+### Obs study vs. RCT study estimates
+```{r obs_aipw_rand_diff}
+# Difference between CCDS-AIPW vs. RCT estimates
+table_diff_study = table_ensemble  %>%
+    group_by(Intervention) %>%
+    arrange(Estimator ) %>%
+    summarize(diff = Estimate[Estimator == "STSM obs OR"] - Estimate[Estimator == "STSM RCT OR"],
+           p_diff = diff/Estimate[Estimator == "STSM RCT OR"]*100,
+           diff_dollar = exp(Estimate[Estimator == "STSM obs OR"]) - exp(Estimate[Estimator == "STSM RCT OR"])) %>%
+  select(Intervention, diff,p_diff,diff_dollar)
+
+# Min & max
+print("min"); apply(table_diff_study,2,min)
+print("max"); apply(table_diff_study,2,max)
+
+# Table
+table_diff_study %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### RCT target vs. RCT study estimates
+```{r rand_aipw_rand_diff}
+# Difference between CCDS-AIPW vs. RCT estimates
+table_diff_rand = table_ensemble  %>%
+    group_by(Intervention) %>%
+    arrange(Estimator ) %>%
+    summarize(diff = Estimate[Estimator == "RCT OR"] - Estimate[Estimator == "STSM RCT OR"],
+           p_diff = diff/Estimate[Estimator == "STSM RCT OR"]*100,
+           diff_dollar = exp(Estimate[Estimator == "RCT OR"]) - exp(Estimate[Estimator == "STSM RCT OR"])) %>% 
+  select(Intervention, diff,p_diff,diff_dollar)
+
+# Min & max
+print("min"); apply(table_diff_rand,2,min)
+print("max"); apply(table_diff_rand,2,max)
+
+# Table
+table_diff_rand %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+### CCDS-AIPW vs. RCT target estimates
+```{r rand_aipw_target_diff}
+# Difference between CCDS-AIPW vs. RCT estimates
 table_diff = table_ensemble  %>%
     group_by(Intervention) %>%
     arrange(Estimator ) %>%
-    summarize(diff = Estimate[Estimator == "CCDS-AIPW"] - Estimate[Estimator == "Rand OR"],
-           p_diff = diff/Estimate[Estimator == "Rand OR"]*100,
-           diff_dollar = exp(Estimate[Estimator == "CCDS-AIPW"]) - exp(Estimate[Estimator == "Rand OR"])) %>% 
+    summarize(diff = Estimate[Estimator == "CCDS-AIPW"] - Estimate[Estimator == "RCT OR"],
+           p_diff = diff/Estimate[Estimator == "RCT OR"]*100,
+           diff_dollar = exp(Estimate[Estimator == "CCDS-AIPW"]) - exp(Estimate[Estimator == "RCT OR"])) %>% 
   select(Intervention, diff,p_diff,diff_dollar)
 
 # Min & max
@@ -329,6 +370,26 @@ print("max"); apply(table_diff,2,max)
 table_diff %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
     kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 
+```
+
+### CCDS-AIPW vs. RCT study estimates
+```{r rand_aipw_study_diff}
+# Difference between CCDS-AIPW vs. RCT estimates
+table_diff2 = table_ensemble  %>%
+    group_by(Intervention) %>%
+    arrange(Estimator ) %>%
+    summarize(diff = Estimate[Estimator == "CCDS-AIPW"] - Estimate[Estimator == "STSM RCT OR"],
+           p_diff = diff/Estimate[Estimator == "STSM RCT OR"]*100,
+           diff_dollar = exp(Estimate[Estimator == "CCDS-AIPW"]) - exp(Estimate[Estimator == "STSM RCT OR"])) %>% 
+  select(Intervention, diff,p_diff,diff_dollar)
+
+# Min & max
+print("min"); apply(table_diff2,2,min)
+print("max"); apply(table_diff2,2,max)
+
+# Table
+table_diff2 %>% mutate_if(is.numeric, round, 2) %>% kable() %>% 
+    kableExtra::kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
 ## Table
@@ -344,7 +405,7 @@ table_ensemble %>% arrange(Intervention) %>% mutate_if(is.numeric, round, 2) %>%
 # **Linear models with large overlap region**
 These results were obtained with overlap2 overlap region specifications: a = 0.05 for the propensity score and b = 10, which results in effectively 100\% of the data being deemed to be in the overlap region. 
 
-As also seen in the simulation, impact estimates are minimally impacted: CCDS-AIPW estimates shift slightly closer to the rand estimates (as expected, since almost all the data being in the overlap region brings estimates closer to the rand estimator); 2-stage CCDS estimates are not notably affected; CCDS-IPW's estimates were most impacted (as also seen in the simulation) -- its point estimates shifted and CI shrunk.
+As also seen in the simulation, impact estimates are minimally impacted: CCDS-AIPW estimates shift slightly closer to the RCT estimates (as expected, since almost all the data being in the overlap region brings estimates closer to the RCT estimator); 2-stage CCDS estimates are not notably affected; CCDS-IPW's estimates were most impacted (as also seen in the simulation) -- its point estimates shifted and CI shrunk.
 
 ## Sample Treatment-Specific Means (STSMs)
 ```{r results_linear_overlap2_STSM, fig.height=8, fig.width=7} 
@@ -352,18 +413,18 @@ As also seen in the simulation, impact estimates are minimally impacted: CCDS-AI
 table_linear_overlap2 = get_summary_table(estimates_linear_overlap2, boot_linear_overlap2, levels_A = levels_A, ensemble = F)
 
 # Add color grouping for estimators
-table_linear_overlap2_STSM = table_linear_overlap2 %>% filter(Estimator %in% c("STSM rand OR", "STSM obs OR",
-                                                             "STSM rand AIPW", "STSM rand TMLE", 
+table_linear_overlap2_STSM = table_linear_overlap2 %>% filter(Estimator %in% c("STSM RCT OR", "STSM obs OR",
+                                                             "STSM RCT AIPW", "STSM RCT TMLE", 
                                          "STSM obs AIPW", "STSM obs TMLE")) %>% 
-  mutate(Estimator2 = ifelse(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW"), "AIPW",
-                       ifelse(Estimator %in% c("STSM rand TMLE", "STSM obs TMLE"), "TMLE",
-                              ifelse(Estimator %in% c("STSM rand OR", "STSM obs OR"), "OR",
+  mutate(Estimator2 = ifelse(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW"), "AIPW",
+                       ifelse(Estimator %in% c("STSM RCT TMLE", "STSM obs TMLE"), "TMLE",
+                              ifelse(Estimator %in% c("STSM RCT OR", "STSM obs OR"), "OR",
                               "Other"))),
-         Data = ifelse(Estimator %in% c("STSM rand OR", "STSM rand AIPW", "STSM rand TMLE"), "rand",
+         Data = ifelse(Estimator %in% c("STSM RCT OR", "STSM RCT AIPW", "STSM RCT TMLE"), "RCT",
                        ifelse(Estimator %in% c("STSM obs OR", "STSM obs AIPW", "STSM obs TMLE"), "obs",
                               "Other"))) %>% 
     mutate(Estimator2 = factor(Estimator2, levels = c("OR", "AIPW", "TMLE")),
-           Data = factor(Data, levels = c("rand", "obs")))
+           Data = factor(Data, levels = c("RCT", "obs")))
 
 # Re-order plans based on study averages 
 levels_A_sorted = levels(fct_reorder(table_linear_overlap2_STSM$Intervention, table_linear_overlap2_STSM$Estimate, mean)) #%>% 
@@ -416,8 +477,8 @@ paste0("Mean observed bias (diff observed vs. predicted outcome on plan)")
 estimates_linear_overlap2[,c(which(colnames(estimates_linear_overlap2)=="mean_bias_obs_observed.A"):
                       which(colnames(estimates_linear_overlap2)=="mean_bias_rand_overlap_observed.J"))] %>% 
   round(2) %>% matrix(.,ncol=10) %>% set_colnames(levels_A_updated) %>% set_rownames(c("Obs",
-                                                                               "Rand",
-                                                                               "Rand overlap"))
+                                                                               "RCT",
+                                                                               "RCT overlap"))
 
 # Difference between highest- and lowest-spending plan
 paste0("Smallest spending: ",levels_A_sorted[1])
@@ -437,8 +498,8 @@ table_linear_overlap2 %>% filter(Intervention %in% c(levels_A_sorted[1], tail(le
 ## Subset of estimators
 ```{r results_linear_overlap2_subset} 
 # Plot results for subset of CCDS estimators
-plot_results(table_linear_overlap2 %>% filter(Estimator %in% c("STSM rand AIPW", "STSM obs AIPW",  
-                                                      "Rand OR", "Obs/rand OR",
+plot_results(table_linear_overlap2 %>% filter(Estimator %in% c("STSM RCT AIPW", "STSM obs AIPW",  
+                                                      "RCT OR", "Obs/RCT OR",
                                                       "CCDS-AIPW", "2-stage CCDS")), levels_A_sorted) + 
   facet_wrap(~ factor(Intervention, levels_A_sorted), nrow = 2)   
 ```

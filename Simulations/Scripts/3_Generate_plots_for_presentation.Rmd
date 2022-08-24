@@ -32,7 +32,6 @@ library(glmnet) # for lasso regression output
 library(Hmisc) # for efficiently sampling from multinomial distribution
 library(parallel) # for parallel processing  
 library(SuperLearner) # for ensembling
- 
 library(knitr) # pretty tables  
 library(kableExtra) # prettier tables
 library(ggthemes) # pretty colors for ggplots 
@@ -82,11 +81,11 @@ file_suffix = "_fast" #"_full"
 ```
 
 # Base case results
-Let's discuss the estimators one at a time to determine when they work well and when they don't. Why can't we just use the rand estimator? With correctly specified models, the rand estimator is able to extrapolate well; it would be a natural choice in this setting. However, we never know that we've fit the correct models in practice, and when we (incorrectly) fit simple linear models, even though the true cubic relationship isn't too far off the linear one, the rand estimator is no longer able to extrapolate well beyond its support, resulting in large external validity bias.
+Let's discuss the estimators one at a time to determine when they work well and when they don't. Why can't we just use the RCT estimator? With correctly specified models, the RCT estimator is able to extrapolate well; it would be a natural choice in this setting. However, we never know that we've fit the correct models in practice, and when we (incorrectly) fit simple linear models, even though the true cubic relationship isn't too far off the linear one, the RCT estimator is no longer able to extrapolate well beyond its support, resulting in large external validity bias.
 
-The next easiest approach is to use the obs/rand estimator. However, this estimator is subject to unmeasured confounding bias, which exists even when correctly-specified models are fit.
+The next easiest approach is to use the obs/RCT estimator. However, this estimator is subject to unmeasured confounding bias, which exists even when correctly-specified models are fit.
 
-Let's jump ahead and focus on the 2-stage WD estimator, the last in the list. With correctly specified models, all novel estimators including the 2-stage WD approach are able to decrease unmeasured confounding bias. And the 2-stage WD approach is most efficient novel outcome regression estimator. However, when (incorrectly) fitting simple linear models, just as with the rand estimator, the issue of extrapolation similarly plagues the 2-stage WD estimator. In fact, with simple linear least-squares models, its estimates will be identical to that of the rand estimator and with more complex ensemble models its bias tends to be similar to that of the rand estimator. Because of the 2-stage WD's extreme sensitivity to model misspecificiation (which we also observe when fitting ensemble regressions), I do not generally recommend using the 2-stage WD estimator. 
+Let's jump ahead and focus on the 2-stage WD estimator, the last in the list. With correctly specified models, all novel estimators including the 2-stage WD approach are able to decrease unmeasured confounding bias. And the 2-stage WD approach is most efficient novel outcome regression estimator. However, when (incorrectly) fitting simple linear models, just as with the RCT estimator, the issue of extrapolation similarly plagues the 2-stage WD estimator. In fact, with simple linear least-squares models, its estimates will be identical to that of the RCT estimator and with more complex ensemble models its bias tends to be similar to that of the RCT estimator. Because of the 2-stage WD's extreme sensitivity to model misspecificiation (which we also observe when fitting ensemble regressions), I do not generally recommend using the 2-stage WD estimator. 
 
 We've crossed out 3 estimators from consideration, now let's focus on the first of the CCDS estimators, the CCDS and CCDS-AIPW. These estimators suffer from large variability when fitting complex models in the small overlap region, which we observe in the correctly specified model setting and when fitting ensembles. In contrast, when fitting linear models, the CCDS and CCDS-AIPW estimators now perform well, with little bias despite the model misspecification. They perform well due to a linear relationship being a decent approximation to the true cubic one, for purposes of bias estimation. In fact, in the simple linear additive model setting, their estimates will be identical to those of the 2-stage CCDS due to linearity and additivity. The CCDS and CCDS-AIPW therefore are reasonable choices when fitting more simple linear models that are less sensitive than flexible models to wild extrapolations from the small overlap region. They should not be used when fitting more complex relationships without some heavy regularization. 
 
@@ -96,9 +95,7 @@ Let's finally turn our attention to the CCDS-IPW. Through most of the settings -
 
 Comparing the ensemble with an estimated overlap region to that using the true overlap region, we see that performance does not suffer from estimating the overlap region (and in fact at times resulted in lower bias and variance).
 
-Across all these settings, we note that in particular when fitting the flexible ensemble approaches, bias and RMSE may not decrease necessarily compared to the obs/rand estimator. This is due to remnant modeling bias. This bias does shrink with more overlap as well as with more randomized data (see subsequent sections of this report).  
-
-*PAPER FIGURE 2* (figure:results_base_case)  
+Across all these settings, we note that in particular when fitting the flexible ensemble approaches, bias and RMSE may not decrease necessarily compared to the obs/RCT estimator. This is due to remnant modeling bias. This bias does shrink with more overlap as well as with more randomized data (see subsequent sections of this report).  
 
 ```{r sim_results_main, fig.height=7, fig.width=7, warning=F} 
 ## Read in results and get summary tables
@@ -135,8 +132,11 @@ my_tables = rbind(cbind("Type" = table_names[1], table_cs_t_o),
                   cbind("Type" = table_names[3], table_ensemble_t_o),
                   cbind("Type" = table_names[4], table_ensemble)) %>%  
   mutate(Type = factor(Type, table_names))
- 
-plot_bias_rmse_results(my_tables)  
+
+# Paper Figure 2A 
+my_tables_bias_rmse = my_tables
+bias_rmse_EY1 = plot_bias_rmse_results_EY1(my_tables,
+                                           my_ylim=c(0,4)) 
 ```
 
 *PAPER APPENDIX FIGURE 1A* (figure:bias_RMSE)  
@@ -148,9 +148,8 @@ plot_bias_rmse_results(my_tables, exclude_estimators = c("Oracle", "2-stage CCDS
 
 # Coverage
 ## Main results
-All novel estimators were able to achieve nominal coverage except the CCDS-IPW estimator when using grossly misspecified linear models and except the 2-stage WD estimator in the linear model and ensemble setting. The obs/rand estimator attained 0% coverage across all settings, and the rand estimator attained 0% coverage in the linear settings for the PATMs but 95% coverage for the PATE due to biases cancelling out.
+All novel estimators were able to achieve nominal coverage except the CCDS-IPW estimator when using grossly misspecified linear models and except the 2-stage WD estimator in the linear model and ensemble setting. The obs/RCT estimator attained 0% coverage across all settings, and the RCT estimator attained 0% coverage in the linear settings for the PATMs but 95% coverage for the PATE due to biases cancelling out.
 
-*PAPER FIGURE 3* (figure:results_coverge)  
 *PAPER APPENDIX FIGURE 1B* (figure:coverage)  
 ```{r sim_results_coverage, fig.height=5, fig.width=7.5, warning=F, eval=F} 
 ## Read in results and get summary tables
@@ -179,13 +178,59 @@ my_tables = rbind(cbind("Type" = table_names[1], boot_results_cs_t_o),
                   cbind("Type" = table_names[3], boot_results_ensemble)) %>% 
   mutate(Type = factor(Type, table_names))
  
-plot_coverage_results(my_tables)     
-
 plot_coverage_results(my_tables, exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
-                                                         "weighted 2-stage hybrid CCDS", "2-stage WD"))   
+                                                         "weighted 2-stage hybrid CCDS", "2-stage WD"))
+
+# Paper Figure 2B
+my_tables_coverage = my_tables
+coverage_CIwidth_EY1 = plot_coverage_results_EY1(my_tables)   
+
 
 my_tables %>% mutate_if(is.numeric, round, 2) %>% kable("html") %>% 
       kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) 
+```
+
+*PAPER FIGURE 2A* (figure:results_base_case)  
+```{r sim_results_bias_rmse_EY1, fig.height=3.1, fig.width=7.3, warning=F}
+bias_rmse_EY1 
+``` 
+
+*PAPER FIGURE 2B* (figure:results_base_case)  
+```{r sim_results_coverage_EY1, fig.height=2.7, fig.width=7.3, warning=F}
+coverage_CIwidth_EY1 
+```
+
+*PAPER APPENDIX TABLE* (appendix:results_table_base_case)  
+```{r sim_results_table, fig.height=2.7, fig.width=7.3, warning=F}
+estimators_to_exclude = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
+                          "weighted 2-stage hybrid CCDS", "2-stage WD",
+                          "Lu-RCT", "Lu-obs/RCT1", "Lu-obs/RCT2")
+sim_results_table_bias_rmse = my_tables_bias_rmse %>% filter(!(Estimator %in% estimators_to_exclude)) %>% 
+  mutate(RMSE = sqrt(MSE)) %>% select(Type, Estimand, Estimator, Bias, RMSE) 
+sim_results_table_coverage = my_tables_coverage %>% filter(!(Estimator %in% estimators_to_exclude)) %>% 
+    select(Type, Estimand, Estimator, mean_coverage, mean_ci_width) %>% 
+    rename(., "Mean coverage" = mean_coverage, "Mean CI width" = mean_ci_width)
+
+sim_results_table = left_join(sim_results_table_bias_rmse, 
+                              sim_results_table_coverage, 
+                              by = c("Type", "Estimand", "Estimator")) %>% 
+  mutate(Type = str_replace(Type,"\n ",""),
+         Estimator = gsub("weighted","",Estimator),
+         Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
+         Estimator = factor(Estimator, levels = c("RCT","Lu-RCT",
+                                                  "Obs/RCT",
+                                                  "Lu-obs/RCT1",
+                                                  "Lu-obs/RCT2",
+                                                  " 2-stage WD",
+                                                  "CCDS-OR","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW")))
+
+write.csv(sim_results_table %>% mutate_if(is.numeric, round, 2), 
+          "C:/Users/irina/Dropbox/Research - dissertation/Paper 2 - Medicaid work/Results & output/Simulations/sim_results_table_appendix.csv")
+
+sim_results_table %>% mutate_if(is.numeric, round, 2) %>% kable("html") %>% 
+      kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) 
+
+
 ```
 
 ## Lu et al. 2019
@@ -216,7 +261,7 @@ my_tables_lu2019 = rbind(cbind("Type" = table_lu2019_names[1], table_lu2019_cs_t
   mutate(Type = factor(Type, table_lu2019_names))
 
  
-plot_coverage_results(my_tables_lu2019)     
+plot_coverage_results(my_tables_lu2019, exclude_estimators=NULL)     
 
 my_tables_lu2019 %>% mutate_if(is.numeric, round, 2) %>% kable("html") %>% 
       kableExtra::kable_styling(bootstrap_options = c("striped", "hover")) 
@@ -224,9 +269,9 @@ my_tables_lu2019 %>% mutate_if(is.numeric, round, 2) %>% kable("html") %>%
 ```
 
 # Different sample sizes
-With correctly specified models, although all estimators' bias is lower than that of the obs/rand estimator, the ensemble CCDS and CCDS-AIPW estimators retains a non-trivial amount of bias that minimally decreases with larger sample sizes due to modeling bias from fitting models in the small overlap region. With smaller sample sizes ($n=2000$; $n_\text{RCT}=500$), the RMSE of all novel estimators and the rand estimator exceed that of the obs/rand estimator. 
+With correctly specified models, although all estimators' bias is lower than that of the obs/RCT estimator, the ensemble CCDS and CCDS-AIPW estimators retains a non-trivial amount of bias that minimally decreases with larger sample sizes due to modeling bias from fitting models in the small overlap region. With smaller sample sizes ($n=2000$; $n_\text{RCT}=500$), the RMSE of all novel estimators and the RCT estimator exceed that of the obs/RCT estimator. 
 
-With ensemble models, all novel estimators' bias is below that of the obs/rand estimator (besides the 2-stage WD, which drops below after $n=10,000$). RMSE, however, only drops below that of the obs/rand estimator with $n=50,000$ (except for the CCDS-IPW estimator, whose RMSE is lower even with $n=2,000$.
+With ensemble models, all novel estimators' bias is below that of the obs/RCT estimator (besides the 2-stage WD, which drops below after $n=10,000$). RMSE, however, only drops below that of the obs/RCT estimator with $n=50,000$ (except for the CCDS-IPW estimator, whose RMSE is lower even with $n=2,000$.
 
 ```{r sim_diff_n, fig.height=4, fig.width=7} 
 ## Read in results and get summary tables
@@ -306,7 +351,7 @@ plot_bias_rmse_separately(my_tables_b, my_estimands = c("E(Y^1) - E(Y^2)"),
                           estimators_remove = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", 
                                                            "weighted 2-stage hybrid CCDS",
                                                            "2-stage WD", "weighted 2-stage WD",
-                                                         "Lu-rand", "Lu-obs/rand1", "Lu-obs/rand2")) + 
+                                                         "Lu-RCT", "Lu-obs/rand1", "Lu-obs/rand2")) + 
   scale_x_continuous(breaks=c(200, 2000,10000,20000,50000)) +
   theme(axis.text.x = element_text(angle=45, hjust=1)) +
   xlab("Sample size")
@@ -412,7 +457,7 @@ plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) +
 ```
 
 # Different levels of overlap
-With more overlap, all estimators are able to shrink bias close to zero. With less overlap, the rand estimator and CCDS/CCDS-AIPW estimators particularly suffer.
+With more overlap, all estimators are able to shrink bias close to zero. With less overlap, the RCT estimator and CCDS/CCDS-AIPW estimators particularly suffer.
 ```{r sim_overlap, fig.height=4, fig.width=7} 
 ## Read in results and get summary tables
 # Datasets
@@ -484,7 +529,7 @@ plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) +
 ```
 
 # Different ratios of $n_\text{RCT}$ to $n_\text{obs}$
-Bias and RMSE decreases across all estimators as the ratio of RCT to obs observations increases. As the RCT observations comprise a targer portion of the target sample, the bias from using the rand and obs/rand estimators also necessarily decreases. 
+Bias and RMSE decreases across all estimators as the ratio of RCT to obs observations increases. As the RCT observations comprise a targer portion of the target sample, the bias from using the RCT and obs/RCT estimators also necessarily decreases. 
 ```{r sim_nRCT_to_nobs, fig.height=4, fig.width=7} 
 ## Read in results and get summary tables
 # Datasets
@@ -571,7 +616,7 @@ plot_bias_rmse_separately(my_tables, my_estimands = c("E(Y^2)")) +
 ```
 
 # Constant bias violation
-A violation of the constant bias assumption increases bias and RMSE for each of the estimators corresponding to the amount of extra unmeasured confounding bias observed in the obs/rand estimator. The impact purely accommodates the extra unmeasured confounding bias which was not removed.
+A violation of the constant bias assumption increases bias and RMSE for each of the estimators corresponding to the amount of extra unmeasured confounding bias observed in the obs/RCT estimator. The impact purely accommodates the extra unmeasured confounding bias which was not removed.
 ```{r sim_cbv, fig.height=4, fig.width=7} 
 ## Read in results and get summary tables
 # Datasets
@@ -793,7 +838,7 @@ my_tables = rbind(cbind("Type" = table_names[2], "Setting"="default", table_ense
                                             "overlap4" = 0.52, 
                                             "overlap3"= 0.91)) %>% 
   mutate(Type = factor(Type, table_names)) %>% 
-  filter(Estimator %notin% c("Rand","Obs/rand"))
+  filter(Estimator %notin% c("RCT","Obs/RCT"))
  
 
 ```
@@ -817,10 +862,10 @@ grid.arrange(p1, p2, p_legend, ncol=3, widths=c(3.6, 3.5, 1.2))
 
 my_tables[my_tables$Estimator %notin% c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
                                                        "2-stage WD", "weighted 2-stage WD",
-                                        "Rand","Obs/rand") ,] %>% 
+                                        "RCT","Obs/RCT") ,] %>% 
     mutate(Estimator = gsub("weighted","",Estimator)) %>% 
     mutate(Estimator = fct_relevel(Estimator,levels = levels(my_tables$Estimator))) %>% 
-    mutate(Estimator = factor(Estimator,levels = c("Rand","Obs/rand"," 2-stage WD",
+    mutate(Estimator = factor(Estimator,levels = c("RCT","Obs/RCT"," 2-stage WD",
                                                         "CCDS","CCDS-AIPW"," 2-stage CCDS","CCDS-IPW"))) %>%
     mutate(Abs_Bias = abs(Bias),
            RMSE = sqrt(MSE),
@@ -894,15 +939,15 @@ my_tables = rbind(cbind("Type" = table_names[1], "Setting"="P(S) probabilistic",
 my_estimands = c("E(Y^1)","E(Y^2)","E(Y^1) - E(Y^2)") # estimands to summarize in plots, from c("E(Y^1)","E(Y^2)","E(Y^3)","E(Y^1) - E(Y^2)")
 exclude_estimators = c("Oracle", "2-stage CCDS", "2-stage hybrid CCDS", "weighted 2-stage hybrid CCDS", 
                        "2-stage WD", "weighted 2-stage WD",
-                       "Lu-rand", "Lu-obs/rand1", "Lu-obs/rand2") # Estimators in my_tables to exclude from plot
+                       "Lu-RCT", "Lu-obs/rand1", "Lu-obs/rand2") # Estimators in my_tables to exclude from plot
 
 
 my_tables2 = my_tables[my_tables$Estimand %in% my_estimands & 
                          my_tables$Estimator %notin%  exclude_estimators,] %>% 
   mutate(Estimator = gsub("weighted","",Estimator),
          Estimator = recode_factor(Estimator, "CCDS"="CCDS-OR"),
-         Estimator = factor(Estimator, levels = c("Rand","Lu-rand",
-                                                  "Obs/rand",
+         Estimator = factor(Estimator, levels = c("RCT","Lu-RCT",
+                                                  "Obs/RCT",
                                                   "Lu-obs/rand1",
                                                   "Lu-obs/rand2",
                                                   " 2-stage WD",
