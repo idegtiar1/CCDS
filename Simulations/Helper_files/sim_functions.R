@@ -2855,7 +2855,7 @@ plot_coverage_results = function(my_tables, # stack of outputs of get_summary_ta
                        legend.title = element_blank(), 
                        legend.text = element_text(size=8),
                        plot.caption = element_text(hjust = 0, face= "italic")) + 
-    xlab("Mean CI Width") + ylab("Mean Coverage") + ylim(my_ylim) +
+    xlab("Mean CI Width") + ylab("Coverage Probability") + ylim(my_ylim) +
     scale_shape_manual(values = c(16,17,15,3,7,8,4)) +
     facet_grid(factor(Estimand,levels=my_estimands) ~ factor(Type), scales = "free",labeller = "label_parsed") #+
     #ggtitle("Coverage and CI width") +
@@ -2953,7 +2953,7 @@ plot_coverage_results_EY1 = function(my_tables, # stack of outputs of get_summar
                        legend.title = element_blank(), 
                        legend.text = element_text(size=8),
                        plot.caption = element_text(hjust = 0, face= "italic")) + #base_size = 35
-    xlab("Mean CI Width") + ylab("Mean Coverage") + ylim(my_ylim) +
+    xlab("Mean CI Width") + ylab("Coverage Probability") + ylim(my_ylim) +
     scale_shape_manual(values = c(16,17,15,3,7,8,4,0,1,9)) +
     facet_grid(. ~ factor(Type), scales = "free",labeller = "label_parsed") #+
   
